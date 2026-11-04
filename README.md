@@ -23,6 +23,16 @@ npm run dev
 
 Then visit `http://localhost:4173` for the project overview or `http://localhost:4173/app` for the app. No environment file is needed. A normal browser can show the interface, but wallet actions require Nimiq Pay’s injected EVM wallet.
 
+## Deploy to Cloudflare Workers
+
+The Worker serves files from `public`. Its `_redirects` file maps `/app` to the dashboard page.
+
+```sh
+npx wrangler deploy
+```
+
+This requires Wrangler and Cloudflare authentication for the account that owns the `current` Worker.
+
 ## Network and costs
 
 The app is configured for **Polygon mainnet (chain ID 137)** and Polygon USDT. The Nimiq testnet switch does not change the EVM network. A supply may first require a token approval, and both approval and supply/withdrawal can require POL gas. Check the wallet’s network, recipient/contract details, amount, and fee before signing.

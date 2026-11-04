@@ -10,6 +10,7 @@ Thumbs.db
 *.log
 coverage/
 .vercel/
+.wrangler/
 HACKATHON_BUILD_STANDARD_V2.md
 HACKATHON_REBUILD_PLAYBOOK.md
 /Elegant Purple Garden Portrait.png

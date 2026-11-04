@@ -93,10 +93,6 @@ function initCarousel() {
     pauseButton.setAttribute('aria-label', paused ? 'Resume story rotation' : 'Pause story rotation');
     start();
   });
-  carousel.addEventListener('pointerenter', stop);
-  carousel.addEventListener('pointerleave', start);
-  carousel.addEventListener('focusin', stop);
-  carousel.addEventListener('focusout', (event) => { if (!carousel.contains(event.relatedTarget)) start(); });
   document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
   reducedMotion.addEventListener('change', () => start());
   paint(0);
