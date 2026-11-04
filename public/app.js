@@ -323,7 +323,6 @@ function renderWalletPosition() {
   }
   $('position-value').textContent = `${formatTokenAmount(state.walletData.aTokenBalance)} USDT`;
   $('position-value').classList.add('has-value');
-  $('position-change').textContent = 'aUSDT balance · read from Polygon';
 }
 
 function marketIsFresh() {
