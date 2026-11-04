@@ -1,0 +1,14 @@
+node_modules/
+dist/
+playwright-report/
+test-results/
+playwright/.cache/
+.env
+.env.*
+.DS_Store
+Thumbs.db
+*.log
+coverage/
+.vercel/
+HACKATHON_BUILD_STANDARD_V2.md
+HACKATHON_REBUILD_PLAYBOOK.md

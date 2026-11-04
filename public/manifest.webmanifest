@@ -1,0 +1,9 @@
+{
+  "name": "Current — USDT on Aave",
+  "short_name": "Current",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf6fc",
+  "theme_color": "#faf6fc",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
