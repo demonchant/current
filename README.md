@@ -1,40 +1,48 @@
 # Current
 
-An **Earn** Mini App for Nimiq Pay. Current is designed to show the live Aave V3 USDT supply rate on Polygon, display a user's Aave position, and let them supply or withdraw USDT from their Nimiq Pay wallet. It does not hold funds or promise returns.
+**A Nimiq Pay Mini App for supplying and withdrawing USDT with Aave V3 on Polygon.** Current puts the market view, your position, and transaction review in one focused experience.
 
-## Status
+> **Use with care:** This targets Polygon mainnet. Real actions require USDT and POL for gas. Aave yield varies and is not guaranteed. Review protocol and asset risks before signing.
 
-This repository contains the product code, but the live Aave API, Nimiq Pay wallet flow, real Polygon supply/withdrawal, hosted deployment, and browser suite have not yet been verified. The application is not ready for funded use or hackathon submission. Do not present it as live until those flows have been verified end to end.
+## What it does
 
-## Run locally
+- Reads Aave USDT market data and shows the user’s Polygon position.
+- Connects through the wallet provider available inside Nimiq Pay.
+- Prepares supply and withdrawal transactions for the user to review and sign.
+- Checks the Polygon receipt and position read-back before reporting completion.
 
-Requires Node.js 24 or later. No `.env` file or runtime package installation is required.
+Current does not take custody of funds. It is an interface to Aave, not a guarantee of returns.
 
-```powershell
+## Try it
+
+Open the deployed URL inside Nimiq Pay, or run locally with Node.js 24 or later:
+
+```sh
 npm run dev
 ```
 
-Open `http://localhost:4173` in a browser. To load it inside Nimiq Pay on a phone on the same Wi-Fi, use the development machine's LAN IP and port `4173` in Mini Apps → Custom URL. Outside Nimiq Pay, no wallet is injected, so the wallet connection and transaction controls remain unavailable.
+Then visit `http://localhost:4173` for the project overview or `http://localhost:4173/app` for the app. No environment file is needed. A normal browser can show the interface, but wallet actions require Nimiq Pay’s injected EVM wallet.
 
-The product targets Polygon mainnet (chain ID 137). A supply or withdrawal uses real USDT and real POL gas. The Nimiq testnet switch does not make EVM Mini App transactions testnet transactions.
+## Network and costs
 
-## Product flow
+The app is configured for **Polygon mainnet (chain ID 137)** and Polygon USDT. The Nimiq testnet switch does not change the EVM network. A supply may first require a token approval, and both approval and supply/withdrawal can require POL gas. Check the wallet’s network, recipient/contract details, amount, and fee before signing.
 
-1. Load the current Aave V3 Polygon USDT market data.
-2. Connect the Nimiq Pay EVM wallet and read its Polygon USDT, POL, and aUSDT balances.
-3. Prepare and validate an exact Aave transaction; show its target and amount before wallet confirmation.
-4. Show completion only after a successful Polygon receipt and independent position read-back.
+## Competition fit
 
-When the Aave API or wallet is unavailable, the app should show that state and prevent the corresponding action. A transaction hash alone is not completion.
+Current is designed for the **Earn** category of the Nimiq Mini Apps Competition: a user can put USDT to work in an Aave lending market through Nimiq Pay. The wallet integration is central to reviewing and authorizing the real on-chain actions.
 
-## Checks
+## Verification status
 
-```powershell
+The interface and transaction safeguards are implemented. Hosted browser testing and live verification of the Aave API, Nimiq Pay wallet, and real Polygon supply/withdrawal must be completed before claiming the product is fully verified. See the app’s live status and errors; unavailable services are not replaced with sample data.
+
+Run the local logic tests with:
+
+```sh
 npm test
 ```
 
-The Playwright browser suite is available with `npm run e2e` once `@playwright/test` is installed. It has not been run in this environment. Docker Compose configuration is provided for containerized browser testing; the Docker engine was unavailable here.
+The Playwright suite is run with `npm run e2e` after installing the pinned development dependency and browser. It must be run against the actual deployed application to establish hosted browser coverage.
 
-## Competition
+## Source
 
-The selected category is **Earn** for Nimiq Mini Apps Competition Cycle III. Cycle III defines Earn as putting funds to work through staking or yield. The public source is intended to be released under the MIT License.
+MIT licensed. See [LICENSE](LICENSE). Contributions and issue reports are welcome.

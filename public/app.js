@@ -9,6 +9,7 @@ import {
   amountFromInput,
   encodeAllowance,
   encodeBalanceOf,
+  estimateSimpleYield,
   expectedBalanceDelta,
   formatTokenAmount,
   isAddress,
@@ -87,6 +88,7 @@ function setMarketBusy(busy) {
     $('market-state').innerHTML = '<span class="live-dot" aria-hidden="true"></span><span>Checking</span>';
   }
   renderWalletControls();
+  renderYieldLens();
 }
 
 async function loadMarket() {
@@ -115,6 +117,7 @@ async function loadMarket() {
     $('market-error').textContent = error.message || 'Could not load live Aave market data.';
     $('market-error').hidden = false;
     renderWalletControls();
+    renderYieldLens();
   } finally {
     setMarketBusy(false);
   }
@@ -135,6 +138,37 @@ function renderMarket() {
   $('market-data-note').textContent = paused ? 'Live data · supply currently unavailable' : 'Live Aave market data';
   $('market-error').hidden = true;
   renderWalletControls();
+  renderYieldLens();
+}
+
+function renderYieldLens() {
+  const input = $('estimate-principal');
+  if (!marketIsFresh()) {
+    input.disabled = true;
+    $('estimate-30').textContent = '—';
+    $('estimate-365').textContent = '—';
+    $('yield-estimate-status').textContent = state.gqlBusy ? 'Refreshing the live Aave rate…' : 'A live Aave rate is required before estimating.';
+    return;
+  }
+  input.disabled = false;
+  const amount = input.value.trim();
+  if (!amount) {
+    $('estimate-30').textContent = '—';
+    $('estimate-365').textContent = '—';
+    $('yield-estimate-status').textContent = `Using the current ${state.market.reserve.supplyInfo.apy.formatted}% Aave supply APY when you enter an amount.`;
+    return;
+  }
+  try {
+    const principal = parseTokenAmount(amount);
+    const apy = state.market.reserve.supplyInfo.apy.formatted;
+    $('estimate-30').textContent = `${formatTokenAmount(estimateSimpleYield(principal, apy, 30))} USDT`;
+    $('estimate-365').textContent = `${formatTokenAmount(estimateSimpleYield(principal, apy, 365))} USDT`;
+    $('yield-estimate-status').textContent = `Illustrative gross estimate at the live ${apy}% APY, fetched with the Aave market data above.`;
+  } catch (error) {
+    $('estimate-30').textContent = '—';
+    $('estimate-365').textContent = '—';
+    $('yield-estimate-status').textContent = error.message;
+  }
 }
 
 function escapeHtml(value) {
@@ -693,6 +727,7 @@ function initEvents() {
     return refreshWallet().catch((error) => setWalletMessage(error.message, true));
   });
   $('refresh-market').addEventListener('click', loadMarket);
+  $('estimate-principal').addEventListener('input', renderYieldLens);
   $('tab-supply').addEventListener('click', () => setMode('supply'));
   $('tab-withdraw').addEventListener('click', () => setMode('withdraw'));
   $('amount-input').addEventListener('input', () => { updateAmountSummary(); renderWalletControls(); });

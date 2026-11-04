@@ -96,6 +96,16 @@ export function amountFromInput(input, mode, walletBalance, positionBalance) {
   return amount;
 }
 
+export function estimateSimpleYield(principalRaw, apyPercent, days) {
+  const rate = String(apyPercent).trim();
+  if (!/^\d+(?:\.\d{1,8})?$/.test(rate)) throw new Error('Live APY is not a valid percentage.');
+  const period = Number(days);
+  if (!Number.isInteger(period) || period < 1 || period > 3650) throw new Error('Choose a valid estimate period.');
+  const [whole, fraction = ''] = rate.split('.');
+  const rateScale = BigInt(whole) * 100_000_000n + BigInt(fraction.padEnd(8, '0'));
+  return BigInt(principalRaw) * rateScale * BigInt(period) / (100n * 100_000_000n * 365n);
+}
+
 export function expectedBalanceDelta(before, after, amount, mode, tolerance = 2n) {
   const start = BigInt(before);
   const end = BigInt(after);

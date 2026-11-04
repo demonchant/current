@@ -8,6 +8,7 @@ import {
   amountFromInput,
   encodeAllowance,
   encodeBalanceOf,
+  estimateSimpleYield,
   expectedBalanceDelta,
   formatTokenAmount,
   parseTokenAmount,
@@ -33,6 +34,15 @@ test('amount ceiling is checked against wallet or supplied position', () => {
   assert.equal(amountFromInput('1', 'supply', 2_000_000n, 0n), 1_000_000n);
   assert.throws(() => amountFromInput('3', 'supply', 2_000_000n, 0n), /wallet balance/);
   assert.throws(() => amountFromInput('1', 'withdraw', 0n, 500_000n), /Aave position/);
+});
+
+test('yield lens uses only the current input, live APY percentage and stated simple-interest period', () => {
+  assert.equal(estimateSimpleYield(100_000_000n, '5', 30), 410_958n);
+  assert.equal(estimateSimpleYield(100_000_000n, '5', 365), 5_000_000n);
+  assert.equal(estimateSimpleYield(1_000_000n, '0', 30), 0n);
+  assert.throws(() => estimateSimpleYield(1_000_000n, '5.000000001', 30), /valid percentage/);
+  assert.throws(() => estimateSimpleYield(1_000_000n, '1e2', 30), /valid percentage/);
+  assert.throws(() => estimateSimpleYield(1_000_000n, '5', 0), /valid estimate period/);
 });
 
 test('read-only ERC-20 calls encode the exact account and spender', () => {

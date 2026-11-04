@@ -18,7 +18,8 @@ http.createServer((req, res) => {
   let decodedPath;
   try { decodedPath = decodeURIComponent(pathname); }
   catch { res.writeHead(400); res.end('Bad request'); return; }
-  let target = pathname === '/' ? path.join(root, 'index.html') : path.resolve(root, `.${decodedPath}`);
+  const route = pathname === '/app' || pathname === '/app/' ? '/dashboard.html' : pathname;
+  let target = route === '/' ? path.join(root, 'index.html') : path.resolve(root, `.${decodeURIComponent(route)}`);
   if (pathname !== '/' && !target.startsWith(root + path.sep)) {
     res.writeHead(403); res.end('Forbidden'); return;
   }
@@ -30,7 +31,7 @@ http.createServer((req, res) => {
     'x-content-type-options': 'nosniff',
     'referrer-policy': 'no-referrer',
     'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://api.v3.aave.com https://polygon-rpc.com https://polygon-bor-rpc.publicnode.com; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'",
-    'cache-control': pathname === '/' ? 'no-cache' : 'public, max-age=300',
+    'cache-control': pathname === '/' || route === '/dashboard.html' ? 'no-cache' : 'public, max-age=300',
   });
   createReadStream(target).pipe(res);
 }).listen(port, host, () => process.stdout.write(`Current Earn server listening on ${host}:${port}\n`));
