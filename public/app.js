@@ -14,6 +14,7 @@ import {
   formatTokenAmount,
   isAddress,
   parseTokenAmount,
+  prepareExactApprovalTransaction,
   validateApprovalTransaction,
   validateSupplyTransaction,
   validateWithdrawTransaction,
@@ -453,9 +454,10 @@ async function prepareAction(amount) {
   if (plan.__typename === 'InsufficientBalanceError') throw new Error(`Aave reports insufficient balance. Available: ${plan.available?.value ?? 'unavailable'} USDT.`);
   if (state.mode === 'supply') {
     if (plan.__typename === 'ApprovalRequired') {
-      validateApprovalTransaction(plan.approval, state.wallet, amount);
       validateSupplyTransaction(plan.originalTransaction, state.wallet, amount);
-      return { kind: 'supply', amount, plan, step: 'approval' };
+      const exactApproval = prepareExactApprovalTransaction(plan.approval, state.wallet, amount, state.walletData.allowance);
+      validateApprovalTransaction(exactApproval, state.wallet, amount);
+      return { kind: 'supply', amount, plan: { ...plan, approval: exactApproval }, step: 'approval' };
     }
     if (plan.__typename === 'TransactionRequest') {
       validateSupplyTransaction(plan, state.wallet, amount);

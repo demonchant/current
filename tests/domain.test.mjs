@@ -12,6 +12,7 @@ import {
   expectedBalanceDelta,
   formatTokenAmount,
   parseTokenAmount,
+  prepareExactApprovalTransaction,
   validateApprovalTransaction,
   validateSupplyTransaction,
   validateWithdrawTransaction,
@@ -59,6 +60,16 @@ test('approval transaction must be exact, on Polygon and scoped to the verified 
   assert.equal(validateApprovalTransaction(tx(data, USDT_ADDRESS, owner), owner, amount), true);
   assert.throws(() => validateApprovalTransaction(tx(`0x095ea7b3${addressWord(AAVE_V3_POLYGON_POOL)}${pad(2n ** 256n - 1n)}`, USDT_ADDRESS, owner), owner, amount), /exact USDT amount/);
   assert.throws(() => validateApprovalTransaction({ ...tx(data, USDT_ADDRESS, owner), chainId: 1 }, owner, amount), /exact USDT amount/);
+});
+
+test('broader Aave approval plans are narrowed to the exact amount only when current allowance is zero', () => {
+  const owner = '0x1111111111111111111111111111111111111111';
+  const amount = 1_300_000n;
+  const broad = tx(`0x095ea7b3${addressWord(AAVE_V3_POLYGON_POOL)}${pad(2n ** 256n - 1n)}`, USDT_ADDRESS, owner);
+  const exact = prepareExactApprovalTransaction(broad, owner, amount, 0n);
+  assert.equal(validateApprovalTransaction(exact, owner, amount), true);
+  assert.equal(exact.data, `0x095ea7b3${addressWord(AAVE_V3_POLYGON_POOL)}${pad(amount)}`);
+  assert.throws(() => prepareExactApprovalTransaction(broad, owner, amount, 1n), /broader approval/);
 });
 
 test('supply calldata must match wallet, USDT, pool and exact amount', () => {

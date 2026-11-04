@@ -67,6 +67,31 @@ export function validateApprovalTransaction(tx, from, amountRaw) {
   return true;
 }
 
+export function prepareExactApprovalTransaction(tx, from, amountRaw, currentAllowanceRaw = 0n) {
+  if (!txBaseIsValid(tx, from) || tx.to.toLowerCase() !== USDT_ADDRESS.toLowerCase() ||
+      tx.data.slice(0, 10).toLowerCase() !== '0x095ea7b3' ||
+      addressWord(tx.data, 0) !== AAVE_V3_POLYGON_POOL.toLowerCase()) {
+    throw new Error('The Aave approval sender, token, spender or Polygon network did not match. Nothing was sent.');
+  }
+
+  const requested = BigInt(amountRaw);
+  const apiAllowance = BigInt(`0x${word(tx.data, 1)}`);
+  if (apiAllowance < requested) {
+    throw new Error('The Aave approval plan was below the requested USDT amount. Nothing was sent.');
+  }
+  if (apiAllowance === requested) return tx;
+  if (BigInt(currentAllowanceRaw) !== 0n) {
+    throw new Error('Aave requested a broader approval while this wallet already has an allowance. Refresh the wallet before trying again. Nothing was sent.');
+  }
+
+  // Keep Aave's verified sender, token, spender, chain and zero value, but narrow
+  // a broader API allowance to the exact amount when the on-chain allowance is zero.
+  const exactData = `0x095ea7b3${AAVE_V3_POLYGON_POOL.slice(2).toLowerCase().padStart(64, '0')}${requested.toString(16).padStart(64, '0')}`;
+  const exactTransaction = { ...tx, data: exactData };
+  validateApprovalTransaction(exactTransaction, from, requested);
+  return exactTransaction;
+}
+
 export function validateSupplyTransaction(tx, from, amountRaw) {
   if (!txBaseIsValid(tx, from) || tx.operation !== 'SUPPLY' || tx.to.toLowerCase() !== AAVE_V3_POLYGON_POOL.toLowerCase() ||
       tx.data.slice(0, 10).toLowerCase() !== '0x617ba037' ||
