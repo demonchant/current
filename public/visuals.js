@@ -99,6 +99,35 @@ function initCarousel() {
   start();
 }
 
+function initPointerResponse() {
+  const aura = document.createElement('span');
+  aura.className = 'cursor-aura';
+  aura.setAttribute('aria-hidden', 'true');
+  document.body.append(aura);
+  let frame = 0;
+  document.addEventListener('pointermove', (event) => {
+    if (event.pointerType !== 'mouse') return;
+    if (frame) cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => {
+      document.documentElement.style.setProperty('--pointer-x', `${event.clientX}px`);
+      document.documentElement.style.setProperty('--pointer-y', `${event.clientY}px`);
+      aura.classList.add('is-visible');
+      frame = 0;
+    });
+  }, { passive: true });
+  document.addEventListener('pointerleave', (event) => { if (event.pointerType === 'mouse') aura.classList.remove('is-visible'); });
+  document.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch') return;
+    const ripple = document.createElement('span');
+    ripple.className = 'touch-ripple';
+    ripple.setAttribute('aria-hidden', 'true');
+    ripple.style.left = `${event.clientX}px`;
+    ripple.style.top = `${event.clientY}px`;
+    document.body.append(ripple);
+    window.setTimeout(() => ripple.remove(), 850);
+  }, { passive: true });
+}
+
 function initBlooms() {
   const layer = document.querySelector('[data-bloom]');
   if (!layer || reducedMotion.matches) return;
@@ -129,6 +158,7 @@ function initBlooms() {
 
 initCarousel();
 initBlooms();
+initPointerResponse();
 if (document.body.classList.contains('landing')) {
   loadLandingRate();
   window.setInterval(() => { if (!document.hidden) loadLandingRate(); }, 45_000);

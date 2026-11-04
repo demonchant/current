@@ -21,10 +21,12 @@ import {
 
 const $ = (id) => document.getElementById(id);
 const cleanCopy = (value) => String(value ?? '').replace(/-/g, ' ');
+function wasWalletDismissed() { try { return sessionStorage.getItem('current-wallet-dismissed') === 'true'; } catch { return false; } }
 const state = {
   market: null,
   wallet: null,
   walletData: null,
+  walletDismissed: wasWalletDismissed(),
   mode: 'supply',
   gqlBusy: false,
   pendingAction: null,
@@ -306,6 +308,7 @@ function renderWalletHeader() {
   $('wallet-label').textContent = label;
   $('wallet-dot').classList.toggle('is-connected', Boolean(state.wallet));
   $('connect-top').setAttribute('aria-label', state.wallet ? `Connected wallet ${label}; refresh position` : 'Connect Nimiq Pay wallet');
+  $('disconnect-top').hidden = !state.wallet;
   if (!state.wallet) {
     $('position-value').textContent = 'Connect your wallet';
     $('position-value').classList.remove('has-value');
@@ -346,6 +349,7 @@ function renderWalletControls() {
   const canWrite = onPolygon && actionAvailable && hasAmount && BigInt(state.walletData?.nativeBalance ?? 0) > 0n && !state.busy;
   $('review-button').disabled = !canWrite;
   $('connect-top').disabled = state.busy;
+  $('disconnect-top').disabled = state.busy;
   if (!connected) $('primary-label').textContent = 'Connect wallet';
   else if (!state.walletData) $('primary-label').textContent = 'Switch to Polygon';
   else if (!actionAvailable) $('primary-label').textContent = state.mode === 'supply' && marketFresh ? 'Supply unavailable' : 'Market unavailable';
@@ -768,9 +772,20 @@ function maxAmount() {
 
 function initEvents() {
   $('connect-top').addEventListener('click', () => {
-    if (!state.wallet) return connectWallet();
+    if (!state.wallet) { state.walletDismissed = false; try { sessionStorage.removeItem('current-wallet-dismissed'); } catch {} return connectWallet(); }
     if (!state.walletData) return switchToPolygon();
     return refreshWallet().then(() => showToast('Wallet balances refreshed.')).catch((error) => { setWalletMessage(error.message, true); showToast(error.message, 'error'); });
+  });
+  $('disconnect-top').addEventListener('click', () => {
+    state.wallet = null;
+    state.walletData = null;
+    state.walletDismissed = true;
+    try { sessionStorage.setItem('current-wallet-dismissed', 'true'); } catch {}
+    renderWalletHeader();
+    renderWalletPosition();
+    renderWalletControls();
+    setWalletMessage('Disconnected from Current. Wallet permission remains managed by Nimiq Pay.');
+    showToast('Disconnected from Current. Nimiq Pay still controls wallet permissions.', 'info');
   });
   $('refresh-market').addEventListener('click', () => loadMarket({ announce: true }));
   $('estimate-principal').addEventListener('input', renderYieldLens);
@@ -787,6 +802,8 @@ function initEvents() {
   const injected = provider();
   if (injected?.on) {
     injected.on('accountsChanged', (accounts) => {
+      state.walletDismissed = false;
+      try { sessionStorage.removeItem('current-wallet-dismissed'); } catch {}
       state.wallet = Array.isArray(accounts) && isAddress(accounts[0]) ? accounts[0] : null;
       state.walletData = null;
       renderWalletHeader();
@@ -828,7 +845,7 @@ async function init() {
     if (!document.hidden && (!state.market || Date.now() - state.market.fetchedAt.getTime() >= 60_000)) loadMarket();
   });
   const injected = provider();
-  if (injected) {
+  if (injected && !state.walletDismissed) {
     try {
       const accounts = await injected.request({ method: 'eth_accounts' });
       if (Array.isArray(accounts) && isAddress(accounts[0])) {
