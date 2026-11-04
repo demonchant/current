@@ -4,81 +4,53 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#faf6fc" />
-  <meta name="description" content="Current makes Aave USDT earning on Polygon easier to understand and manage from Nimiq Pay." />
-  <title>Current — Make your USDT move</title>
+  <meta name="description" content="Current brings Aave USDT earning on Polygon into a thoughtful Nimiq Pay experience." />
+  <title>Current | Give your USDT room to bloom</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/styles.css" />
-  <style>
-    .landing { min-height:100svh; overflow:hidden; }
-    .landing-nav { max-width:1240px; margin:auto; padding:28px 5vw; display:flex; align-items:center; justify-content:space-between; }
-    .landing-nav a { color:inherit; text-decoration:none; }
-    .landing-nav .nav-cta { border:1px solid var(--line); border-radius:999px; padding:12px 18px; font-size:.88rem; }
-    .landing-hero { max-width:1240px; margin:auto; padding:8vh 5vw 9vh; display:grid; grid-template-columns:1fr .8fr; gap:6vw; align-items:center; }
-    .landing-kicker { color:var(--violet); font-size:.76rem; letter-spacing:.16em; text-transform:uppercase; font-weight:700; }
-    .landing h1 { max-width:740px; font-size:clamp(3.5rem,8vw,7.3rem); line-height:.94; letter-spacing:-.075em; margin:24px 0; }
-    .landing h1 em { color:var(--violet); font-family:Georgia,serif; font-weight:400; }
-    .landing-lede { max-width:560px; color:var(--ink-soft); font-size:clamp(1.05rem,1.5vw,1.25rem); line-height:1.7; }
-    .landing-actions { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:30px; }
-    .landing-primary { display:inline-flex; background:var(--plum); color:white!important; border-radius:999px; text-decoration:none; padding:15px 23px; font-weight:700; }
-    .landing-secondary { color:var(--ink-soft); text-decoration:none; padding:12px; }
-    .orbit-panel { min-height:390px; position:relative; display:grid; place-items:center; }
-    .orbit-ring { position:absolute; width:min(34vw,390px); aspect-ratio:1; border:1px solid #dfd1e9; border-radius:50%; transform:rotate(-24deg) scaleY(.65); }
-    .orbit-ring:before,.orbit-ring:after { content:""; position:absolute; inset:12%; border:1px solid #eadde9; border-radius:50%; }
-    .orbit-ring:after { inset:25%; border-color:#f2d2c6; }
-    .orbit-core { z-index:1; width:190px; height:190px; border-radius:50%; background:var(--plum); color:#fff; display:grid; place-content:center; text-align:center; box-shadow:0 30px 90px #32134630; }
-    .orbit-core strong { font:400 3rem Georgia,serif; color:var(--coral); }
-    .orbit-core span { font-size:.78rem; letter-spacing:.12em; text-transform:uppercase; }
-    .orbit-label { position:absolute; background:var(--paper-raised); border:1px solid var(--line); border-radius:999px; padding:10px 14px; font-size:.78rem; box-shadow:0 8px 30px #3213460a; }
-    .orbit-label.one { top:12%; right:0; }.orbit-label.two { bottom:12%; left:0; }.orbit-label.three { bottom:5%; right:5%; }
-    .landing-band { background:#f0e8f4; padding:30px 5vw; }
-    .landing-band-inner { max-width:1100px; margin:auto; display:flex; justify-content:space-between; gap:30px; flex-wrap:wrap; color:var(--ink-soft); font-size:.88rem; }
-    .landing-section { max-width:1100px; margin:auto; padding:90px 5vw; }
-    .landing-section h2 { font-size:clamp(2rem,4vw,3.4rem); letter-spacing:-.055em; margin:12px 0 18px; }
-    .landing-section > p { max-width:700px; color:var(--ink-soft); line-height:1.75; }
-    .steps { margin-top:36px; display:grid; grid-template-columns:repeat(3,1fr); border-top:1px solid var(--line); }
-    .step { padding:24px 24px 0 0; }.step b { color:var(--violet); font-size:.78rem; letter-spacing:.12em; }.step h3 { margin:12px 0 8px; }.step p { color:var(--ink-soft); line-height:1.65; font-size:.93rem; }
-    .landing-note { margin-top:38px; padding:18px 20px; border-left:3px solid var(--coral); background:#fff8f5; color:var(--ink-soft); font-size:.9rem; line-height:1.65; }
-    .landing-footer { max-width:1100px; margin:auto; padding:26px 5vw 42px; border-top:1px solid var(--line); color:var(--muted); font-size:.8rem; }
-    @media(max-width:760px){.landing-hero{grid-template-columns:1fr;padding-top:5vh;gap:10px}.orbit-panel{min-height:290px}.orbit-ring{width:260px}.orbit-core{width:150px;height:150px}.steps{grid-template-columns:1fr}.step{padding:22px 0;border-bottom:1px solid var(--line)}.landing-section{padding-top:60px;padding-bottom:60px}}
-    @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
-  </style>
+  <script type="module" src="/visuals.js"></script>
 </head>
-<body class="landing">
+<body class="landing" data-bloom-layer>
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="landing-nav">
     <a class="brand" href="/" aria-label="Current home"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span class="brand-name">current<span class="brand-dot">.</span></span></a>
-    <a class="nav-cta" href="/app">Open the app <span aria-hidden="true">↗</span></a>
+    <nav class="landing-menu" aria-label="Main navigation"><a href="#story">The idea</a><a href="#flow">How it works</a><a class="nav-cta" href="/app">Open Current <span aria-hidden="true">↗</span></a></nav>
   </header>
   <main id="main">
-    <section class="landing-hero">
-      <div>
-        <p class="landing-kicker">Nimiq Pay · Earn · Aave V3</p>
-        <h1>Make your<br />USDT <em>move.</em></h1>
-        <p class="landing-lede">Current brings Aave’s Polygon USDT market and your supply position into a focused Nimiq Pay experience. Check the live market, review the action, and stay in control of your wallet.</p>
-        <div class="landing-actions"><a class="landing-primary" href="/app">Explore Current <span aria-hidden="true">&nbsp;↗</span></a><a class="landing-secondary" href="#how">See how it works</a></div>
+    <section class="story-hero" id="story" aria-label="Current stories">
+      <div class="story-slides" data-carousel aria-roledescription="carousel" aria-label="Current features">
+        <article class="story-slide is-active" data-slide aria-roledescription="slide" aria-label="1 of 3">
+          <img class="story-image" src="/images/hero_growth.webp" alt="A woman in purple holds a bouquet against a plum garden backdrop" fetchpriority="high" />
+          <div class="story-shade"></div><div class="story-copy"><p class="story-kicker">Nimiq Pay · Earn · Aave V3</p><p class="story-index">01 <span>GROW WITH INTENTION</span></p><h1>Give your<br />USDT room<br />to <em>bloom.</em></h1><p class="story-lede">Aave USDT earning, made clear inside Nimiq Pay. See the live market, choose your amount, and keep every signature in your hands.</p><div class="story-actions"><a class="story-cta" href="/app">Explore Current <span aria-hidden="true">↗</span></a><a class="story-text-link" href="#flow">See the flow</a></div></div>
+          <div class="story-rate" aria-live="polite"><span class="rate-orbit" aria-hidden="true">✳</span><span class="story-rate-label">LIVE AAVE SUPPLY APY</span><strong data-live-apy>Checking rate</strong><span class="story-rate-source" data-rate-source>Reading Polygon market</span></div>
+        </article>
+        <article class="story-slide" data-slide aria-roledescription="slide" aria-label="2 of 3" aria-hidden="true">
+          <img class="story-image" src="/images/hero_review.webp" alt="A woman in purple thoughtfully reviews her phone" loading="lazy" />
+          <div class="story-shade"></div><div class="story-copy"><p class="story-kicker">A calmer way to take action</p><p class="story-index">02 <span>CLARITY BEFORE THE WALLET</span></p><h2>Know what<br />you are about<br />to <em>sign.</em></h2><p class="story-lede">Review the exact amount, token, network, and Aave destination before Nimiq Pay opens its approval screen.</p><div class="story-actions"><a class="story-cta" href="/app#action-heading">Review the flow <span aria-hidden="true">↗</span></a><a class="story-text-link" href="#promise">Our promise</a></div></div>
+          <div class="story-rate"><span class="rate-orbit" aria-hidden="true">✳</span><span class="story-rate-label">LIVE SUPPLY RATE</span><strong data-live-apy>Checking rate</strong><span class="story-rate-source" data-rate-source>Reading Polygon market</span></div>
+        </article>
+        <article class="story-slide" data-slide aria-roledescription="slide" aria-label="3 of 3" aria-hidden="true">
+          <img class="story-image" src="/images/hero_verify.webp" alt="A woman looks toward the light among purple garden flowers" loading="lazy" />
+          <div class="story-shade"></div><div class="story-copy"><p class="story-kicker">A position you can understand</p><p class="story-index">03 <span>FOLLOW THE WHOLE JOURNEY</span></p><h2>From first<br />look to final<br /><em>receipt.</em></h2><p class="story-lede">Current checks the Polygon receipt and reads your Aave position again before calling a transaction complete.</p><div class="story-actions"><a class="story-cta" href="/app#how-it-works">See how it works <span aria-hidden="true">↗</span></a><a class="story-text-link" href="#care">Know the risks</a></div></div>
+          <div class="story-rate"><span class="rate-orbit" aria-hidden="true">✳</span><span class="story-rate-label">LIVE SUPPLY RATE</span><strong data-live-apy>Checking rate</strong><span class="story-rate-source" data-rate-source>Reading Polygon market</span></div>
+        </article>
+        <div class="story-controls" aria-label="Story controls"><button type="button" data-carousel-prev aria-label="Previous story">←</button><div class="story-dots" role="group" aria-label="Choose a story"><button type="button" class="is-active" data-carousel-dot="0" aria-label="Story one" aria-current="true"></button><button type="button" data-carousel-dot="1" aria-label="Story two"></button><button type="button" data-carousel-dot="2" aria-label="Story three"></button></div><button type="button" data-carousel-next aria-label="Next story">→</button><button type="button" class="story-pause" data-carousel-toggle aria-label="Pause story rotation">Ⅱ</button></div>
+        <div class="story-progress" aria-hidden="true"><span data-carousel-progress></span></div>
       </div>
-      <div class="orbit-panel" aria-label="Current connects your wallet to Aave on Polygon">
-        <div class="orbit-ring" aria-hidden="true"></div><div class="orbit-core"><strong>USDT</strong><span>on Polygon</span></div>
-        <span class="orbit-label one">Your Nimiq Pay wallet</span><span class="orbit-label two">Aave V3</span><span class="orbit-label three">You stay in control</span>
-      </div>
+      <div class="bloom-layer" data-bloom aria-hidden="true"></div>
     </section>
-    <div class="landing-band"><div class="landing-band-inner"><span>Built for the Nimiq Mini Apps Earn track</span><span>Polygon mainnet · USDT · Aave V3</span><span>Variable yield · Non-custodial flow</span></div></div>
-    <section class="landing-section" id="how">
-      <p class="landing-kicker">A clearer route to earning</p><h2>One flow. Real protocol. Your keys.</h2>
-      <p>Moving from a wallet to a lending market can mean switching tools and interpreting several steps. Current brings the market view, wallet context, and transaction review together so each action is easier to understand.</p>
-      <div class="steps">
-        <article class="step"><b>01 / CHECK</b><h3>See the market</h3><p>Read the current Aave USDT supply rate and reserve status from live market data.</p></article>
-        <article class="step"><b>02 / REVIEW</b><h3>Connect your wallet</h3><p>Use Nimiq Pay to inspect your Polygon balances and review the amount and transaction before signing.</p></article>
-        <article class="step"><b>03 / VERIFY</b><h3>Confirm the outcome</h3><p>After supply or withdrawal, check the Polygon receipt and position read-back—not just a success message.</p></article>
-      </div>
-      <aside class="landing-note"><strong>Know before you use it.</strong> This flow targets Polygon mainnet. You need USDT and POL for gas. Aave rates vary; supply involves protocol, liquidity, stablecoin, and network risks. Current does not guarantee returns or custody your assets.</aside>
+    <section class="signal-strip" aria-label="Current at a glance"><span>Earn on USDT</span><span class="signal-seed">✳</span><span>Aave V3 on Polygon</span><span class="signal-seed">✳</span><span>Wallet stays in your hands</span><span class="signal-seed">✳</span><span>Receipts checked on chain</span></section>
+    <section class="editorial-section" id="idea">
+      <div class="editorial-heading"><p class="section-eyebrow">A clearer path to yield</p><h2>Money moves better<br />when the path feels clear.</h2></div>
+      <div class="editorial-copy"><p>Using a lending market can mean moving between a wallet, a rate page, and a transaction screen. Current brings those moments together in one Nimiq Pay Mini App.</p><p>Read the live Aave USDT market, inspect your own Polygon position, and review each action before your wallet asks you to sign.</p><a class="underlined-link" href="/app">Meet your Current dashboard <span aria-hidden="true">↗</span></a></div>
     </section>
-    <section class="landing-section" style="padding-top:0" aria-labelledby="fit-title">
-      <p class="landing-kicker">Why Earn</p><h2 id="fit-title">A Mini App built around yield.</h2>
-      <p>The competition’s Earn category is about putting assets to work. Current uses Nimiq Pay’s wallet access to let a user supply USDT to Aave V3 on Polygon and manage that position from the Mini App.</p>
-      <div class="landing-note"><strong>Verification status:</strong> The public site and live wallet, Aave API, supply, and withdrawal flows still need end-to-end verification before they can be described as proven. Open the app to see the actual availability on your device.</div>
+    <section class="flow-section" id="flow">
+      <div class="flow-heading"><p class="section-eyebrow">A real earning flow</p><h2>Look. Decide. Verify.</h2><p>Every step stays connected to live market data, your wallet, and Polygon.</p></div>
+      <div class="flow-steps"><article><span>01</span><h3>Read the market</h3><p>Current requests the Aave Polygon USDT rate and reserve state. If the source is unavailable, the app says so.</p></article><article><span>02</span><h3>Review with care</h3><p>Check your balance, the exact amount, approval details, and POL fee in Nimiq Pay before signing.</p></article><article><span>03</span><h3>Check what happened</h3><p>Current waits for the receipt and checks the position again. A pending transaction is never shown as complete.</p></article></div>
     </section>
+    <section class="promise-section" id="promise"><div class="promise-flower" aria-hidden="true">✳</div><div><p class="section-eyebrow">Designed around your control</p><h2>Current never takes custody.</h2><p>Your wallet approves every action. Current prepares the Aave request, explains what it will do, then checks the result on Polygon.</p></div><a class="promise-link" href="/app">Open the live dashboard <span aria-hidden="true">↗</span></a></section>
+    <section class="care-section" id="care"><p class="section-eyebrow">Before you begin</p><h2>Earn can grow.<br />It can also change.</h2><div class="care-grid"><p>Aave supply rates move with the market. No return is promised. Supplying USDT carries protocol, liquidity, stablecoin, and network risks.</p><p>Current uses Polygon mainnet. You need USDT to supply and POL for transaction fees. Check the amount, destination, network, and fee before signing.</p></div><p class="verification-note"><span class="verification-pulse" aria-hidden="true"></span><span><strong>Honest status</strong> Live wallet and transaction behavior must be checked in Nimiq Pay before use. The app shows when market data or wallet access is unavailable.</span></p></section>
   </main>
-  <footer class="landing-footer">Current · An independent Nimiq Mini Apps Competition project · <a href="https://github.com/demonchant/current" rel="noreferrer">Source code</a> · MIT License</footer>
+  <footer class="landing-footer"><a class="brand" href="/" aria-label="Current home"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span class="brand-name">current<span class="brand-dot">.</span></span></a><span>A Nimiq Mini App competition project</span><span>Original portrait series for Current</span><a href="https://github.com/demonchant/current" target="_blank" rel="noreferrer">Open source · MIT <span aria-hidden="true">↗</span></a></footer>
 </body>
 </html>

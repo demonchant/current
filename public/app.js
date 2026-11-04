@@ -20,6 +20,7 @@ import {
 } from './domain.mjs';
 
 const $ = (id) => document.getElementById(id);
+const cleanCopy = (value) => String(value ?? '').replace(/-/g, ' ');
 const state = {
   market: null,
   wallet: null,
@@ -83,6 +84,8 @@ function findUsdtReserve(market) {
 function setMarketBusy(busy) {
   state.gqlBusy = busy;
   $('refresh-market').disabled = busy;
+  $('refresh-market').classList.toggle('is-loading', busy);
+  $('refresh-market').setAttribute('aria-busy', String(busy));
   if (busy) {
     $('market-state').classList.remove('is-error', 'is-paused');
     $('market-state').innerHTML = '<span class="live-dot" aria-hidden="true"></span><span>Checking</span>';
@@ -91,7 +94,7 @@ function setMarketBusy(busy) {
   renderYieldLens();
 }
 
-async function loadMarket() {
+async function loadMarket({ announce = false } = {}) {
   if (state.gqlBusy) return;
   setMarketBusy(true);
   $('market-error').hidden = true;
@@ -104,6 +107,7 @@ async function loadMarket() {
     const reserve = findUsdtReserve(market);
     state.market = { ...market, reserve, fetchedAt: new Date() };
     renderMarket();
+    if (announce) showToast('Live Aave rate updated.');
     if (state.wallet) await refreshWallet();
   } catch (error) {
     state.market = null;
@@ -114,8 +118,10 @@ async function loadMarket() {
     $('market-state').innerHTML = '<span class="live-dot" aria-hidden="true"></span><span>Unavailable</span>';
     $('reserve-status').textContent = 'Live status unavailable';
     $('freshness').textContent = 'No current Aave reserve response is available.';
-    $('market-error').textContent = error.message || 'Could not load live Aave market data.';
+    $('market-error').textContent = cleanCopy(error.message || 'Could not load live Aave market data.');
     $('market-error').hidden = false;
+    window.dispatchEvent(new CustomEvent('current:rate', { detail: { error: true } }));
+    if (announce) showToast('Live Aave data could not be refreshed.', 'error');
     renderWalletControls();
     renderYieldLens();
   } finally {
@@ -136,6 +142,7 @@ function renderMarket() {
   $('reserve-status').textContent = reserve.isPaused ? 'Paused by protocol' : reserve.isFrozen ? 'Frozen by protocol' : reserve.supplyInfo?.supplyCapReached ? 'Supply cap reached' : 'Open for supply';
   $('freshness').textContent = `Aave V3 market API · fetched ${fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. APY may change; API indexing delay is possible.`;
   $('market-data-note').textContent = paused ? 'Live data · supply currently unavailable' : 'Live Aave market data';
+  window.dispatchEvent(new CustomEvent('current:rate', { detail: { value: `${rate}%`, source: 'Current Aave market rate' } }));
   $('market-error').hidden = true;
   renderWalletControls();
   renderYieldLens();
@@ -167,7 +174,7 @@ function renderYieldLens() {
   } catch (error) {
     $('estimate-30').textContent = '—';
     $('estimate-365').textContent = '—';
-    $('yield-estimate-status').textContent = error.message;
+    $('yield-estimate-status').textContent = cleanCopy(error.message);
   }
 }
 
@@ -180,7 +187,7 @@ function provider() {
 }
 
 function setWalletMessage(message, error = false) {
-  $('position-status').textContent = message;
+  $('position-status').textContent = cleanCopy(message);
   $('position-status').style.color = error ? 'var(--red)' : '';
 }
 
@@ -190,7 +197,7 @@ async function connectWallet() {
   const injected = provider();
   if (!injected) {
     setWalletMessage('Open this Mini App inside Nimiq Pay to connect.', true);
-    showToast('Wallet connection is available inside Nimiq Pay. No wallet was connected.');
+    showToast('Wallet connection is available inside Nimiq Pay. No wallet was connected.', 'error');
     return;
   }
   setBusy(true);
@@ -205,6 +212,7 @@ async function connectWallet() {
       setWalletMessage('Switch to Polygon to read this position.');
       $('gas-balance').textContent = 'Switch network to check';
       renderWalletControls();
+      showToast('Switch to Polygon to view your position.', 'info');
       return;
     }
     await refreshWallet();
@@ -213,6 +221,7 @@ async function connectWallet() {
   } catch (error) {
     if (isUserRejected(error)) setWalletMessage('Connection cancelled. No wallet was connected.', true);
     else setWalletMessage(error.message || 'Wallet connection failed.', true);
+    showToast(isUserRejected(error) ? 'Wallet connection cancelled.' : (error.message || 'Wallet connection failed.'), 'error');
   } finally {
     setBusy(false);
   }
@@ -231,8 +240,13 @@ async function switchToPolygon() {
     await refreshWallet();
     showToast('Polygon is connected. Review the live position before taking action.');
   } catch (error) {
-    if (isUserRejected(error)) setWalletMessage('Network switch cancelled. Transactions remain disabled.', true);
-    else setWalletMessage(error.message || 'Could not switch to Polygon.', true);
+    if (isUserRejected(error)) {
+      setWalletMessage('Network switch cancelled. Transactions remain disabled.', true);
+      showToast('Network switch cancelled. Nothing was sent.', 'error');
+    } else {
+      setWalletMessage(error.message || 'Could not switch to Polygon.', true);
+      showToast(error.message || 'Could not switch to Polygon.', 'error');
+    }
   } finally { setBusy(false); }
 }
 
@@ -366,7 +380,7 @@ function updateAmountSummary() {
       $('summary-value').textContent = `${formatTokenAmount(raw)} USDT`;
       $('form-error').hidden = true;
     } catch (error) {
-      $('form-error').textContent = error.message;
+      $('form-error').textContent = cleanCopy(error.message);
       $('form-error').hidden = false;
     }
   } else $('form-error').hidden = true;
@@ -388,6 +402,7 @@ function setMode(mode) {
   $('amount-input').value = '';
   updateAmountSummary();
   renderWalletControls();
+  showToast(`${mode === 'supply' ? 'Supply' : 'Withdrawal'} selected.`, 'info');
 }
 
 function setBusy(busy) {
@@ -396,12 +411,16 @@ function setBusy(busy) {
   renderWalletControls();
 }
 
-function showToast(message) {
+function showToast(message, tone = 'success') {
   const toast = $('toast');
-  toast.textContent = message;
+  toast.textContent = cleanCopy(message);
+  toast.dataset.tone = tone;
+  toast.classList.remove('is-visible');
+  void toast.offsetWidth;
+  toast.classList.add('is-visible');
   toast.hidden = false;
   clearTimeout(state.toastTimer);
-  state.toastTimer = setTimeout(() => { toast.hidden = true; }, 4800);
+  state.toastTimer = setTimeout(() => { toast.hidden = true; toast.classList.remove('is-visible'); }, 4800);
 }
 
 function makeSupplyQuery(amount) {
@@ -474,13 +493,21 @@ async function reviewSubmit(event) {
   try {
     const amount = amountFromInput($('amount-input').value, state.mode, state.walletData.tokenBalance, state.walletData.aTokenBalance);
     setBusy(true);
+    $('review-button').classList.add('is-loading');
+    $('review-button').setAttribute('aria-busy', 'true');
     $('primary-label').textContent = 'Preparing exact transaction…';
     const action = await prepareAction(amount);
     setDialogPlan(action);
+    showToast('Aave prepared the transaction for your review.', 'success');
   } catch (error) {
-    $('form-error').textContent = error.message || 'Could not prepare this transaction.';
+    $('form-error').textContent = cleanCopy(error.message || 'Could not prepare this transaction.');
     $('form-error').hidden = false;
-  } finally { setBusy(false); }
+    showToast(error.message || 'Could not prepare this transaction.', 'error');
+  } finally {
+    $('review-button').classList.remove('is-loading');
+    $('review-button').removeAttribute('aria-busy');
+    setBusy(false);
+  }
 }
 
 async function recheckBeforeWrite() {
@@ -533,6 +560,8 @@ async function confirmDialogAction() {
   if (!action || state.busy) return;
   setBusy(true);
   $('confirm-action').disabled = true;
+  $('confirm-action').classList.add('is-loading');
+  $('confirm-action').setAttribute('aria-busy', 'true');
   try {
     if (!state.market || state.gqlBusy || Date.now() - state.market.fetchedAt.getTime() >= 60_000) {
       state.pendingAction = null;
@@ -549,6 +578,7 @@ async function confirmDialogAction() {
       savePending(pending);
       state.pendingAction = { kind: 'reconcile', pending };
       $('dialog-status').textContent = 'Approval submitted. Waiting for Polygon confirmation…';
+      showToast('Approval sent. Waiting for Polygon confirmation.', 'info');
       setTransactionLink(hash);
       const receipt = await waitForReceipt(hash);
       if (!receipt) {
@@ -561,11 +591,12 @@ async function confirmDialogAction() {
         throw new Error('Polygon receipt did not match the approved wallet and USDT token contract. Reconcile before continuing.');
       }
       const allowance = await ethCall(USDT_ADDRESS, encodeAllowance(state.wallet, AAVE_V3_POLYGON_POOL));
-      if (allowance !== action.amount) throw new Error('Approval receipt confirmed, but Polygon read-back did not show the exact requested allowance. Supply remains disabled.');
+      if (allowance !== action.amount) throw new Error('Approval receipt confirmed, but Polygon read back did not show the exact requested allowance. Supply remains disabled.');
       sessionStorage.removeItem('current.pending');
       state.pendingAction = action;
       action.step = 'supply';
       $('dialog-status').textContent = 'Exact approval confirmed on Polygon. Review and approve the separate supply transaction in Nimiq Pay.';
+      showToast('Exact approval confirmed. Review the separate supply action.', 'success');
       $('confirm-action').querySelector('span').textContent = 'Supply in wallet';
       $('confirm-action').disabled = false;
       setTransactionLink(hash);
@@ -579,10 +610,12 @@ async function confirmDialogAction() {
     savePending(pending);
     state.pendingAction = { kind: 'reconcile', pending };
     $('dialog-status').textContent = 'Submitted to Polygon. Waiting for its receipt…';
+    showToast('Transaction sent. Waiting for the Polygon receipt.', 'info');
     setTransactionLink(hash);
     const receipt = await waitForReceipt(hash);
     if (!receipt) {
       $('dialog-status').textContent = 'Still pending on Polygon. Do not submit again. You can safely reconcile this transaction later.';
+      showToast('Transaction is pending on Polygon.', 'info');
       $('confirm-action').querySelector('span').textContent = 'Check status';
       $('confirm-action').disabled = false;
       return;
@@ -599,17 +632,22 @@ async function confirmDialogAction() {
       $('confirm-action').disabled = false;
       state.pendingAction = null;
     } else {
-      $('dialog-status').textContent = 'Receipt confirmed, but the position read-back has not reflected the expected change yet. Status remains unverified; do not repeat this transaction.';
+      $('dialog-status').textContent = 'Receipt confirmed, but the position read back has not reflected the expected change yet. Status remains unverified; do not repeat this transaction.';
       $('dialog-status').classList.add('is-error');
+      showToast('Receipt found, but the position change is not verified yet.', 'error');
       $('confirm-action').querySelector('span').textContent = 'Check position again';
       $('confirm-action').disabled = false;
     }
   } catch (error) {
-    $('dialog-status').textContent = isUserRejected(error) ? 'Wallet request declined. No success was recorded.' : (error.message || 'Transaction failed. No success was recorded.');
+    $('dialog-status').textContent = cleanCopy(isUserRejected(error) ? 'Wallet request declined. No success was recorded.' : (error.message || 'Transaction failed. No success was recorded.'));
     $('dialog-status').classList.add('is-error');
+    showToast(isUserRejected(error) ? 'Wallet request declined. Nothing was completed.' : (error.message || 'Transaction failed.'), 'error');
     $('confirm-action').disabled = false;
-    if (isUserRejected(error)) showToast('Transaction declined in the wallet. No success was recorded.');
-  } finally { setBusy(false); }
+  } finally {
+    $('confirm-action').classList.remove('is-loading');
+    $('confirm-action').removeAttribute('aria-busy');
+    setBusy(false);
+  }
 }
 
 function savePending(item) {
@@ -655,6 +693,8 @@ async function confirmReconciliation() {
   if (!pending) { $('review-dialog').close(); return; }
   setBusy(true);
   $('confirm-action').disabled = true;
+  $('confirm-action').classList.add('is-loading');
+  $('confirm-action').setAttribute('aria-busy', 'true');
   try {
     await recheckBeforeWrite();
     const receipt = await provider().request({ method: 'eth_getTransactionReceipt', params: [pending.hash] });
@@ -679,7 +719,7 @@ async function confirmReconciliation() {
           receipt.to?.toLowerCase() !== USDT_ADDRESS.toLowerCase() ||
           (receipt.status !== '0x1' && receipt.status !== 1)) throw new Error('Polygon receipt did not match the saved approval transaction.');
       const allowance = await ethCall(USDT_ADDRESS, encodeAllowance(pending.from, AAVE_V3_POLYGON_POOL));
-      if (allowance !== BigInt(pending.amount)) throw new Error('Receipt exists, but allowance read-back did not match the exact requested amount.');
+      if (allowance !== BigInt(pending.amount)) throw new Error('Receipt exists, but allowance read back did not match the exact requested amount.');
       sessionStorage.removeItem('current.pending');
       $('dialog-status').textContent = 'Exact allowance and receipt verified. Review the supply action again when ready.';
       $('confirm-action').querySelector('span').textContent = 'Close';
@@ -693,15 +733,20 @@ async function confirmReconciliation() {
     sessionStorage.removeItem('current.pending');
     $('dialog-status').textContent = 'Polygon receipt and updated aUSDT balance both verified.';
     $('dialog-status').classList.remove('is-error');
+    showToast('Saved transaction and updated position verified.', 'success');
     $('confirm-action').querySelector('span').textContent = 'Close';
     $('confirm-action').disabled = false;
     state.pendingAction = null;
     await refreshWallet();
   } catch (error) {
-    $('dialog-status').textContent = error.message || 'Could not verify the result. Do not repeat the transaction.';
+    $('dialog-status').textContent = cleanCopy(error.message || 'Could not verify the result. Do not repeat the transaction.');
     $('dialog-status').classList.add('is-error');
     $('confirm-action').disabled = false;
-  } finally { setBusy(false); }
+  } finally {
+    $('confirm-action').classList.remove('is-loading');
+    $('confirm-action').removeAttribute('aria-busy');
+    setBusy(false);
+  }
 }
 
 function isModeAction(action) { return action && ['supply', 'withdraw'].includes(action.kind); }
@@ -718,15 +763,16 @@ function maxAmount() {
   $('amount-input').value = formatTokenAmount(raw).replaceAll(',', '');
   updateAmountSummary();
   renderWalletControls();
+  showToast('Available balance filled into the amount field.', 'info');
 }
 
 function initEvents() {
   $('connect-top').addEventListener('click', () => {
     if (!state.wallet) return connectWallet();
     if (!state.walletData) return switchToPolygon();
-    return refreshWallet().catch((error) => setWalletMessage(error.message, true));
+    return refreshWallet().then(() => showToast('Wallet balances refreshed.')).catch((error) => { setWalletMessage(error.message, true); showToast(error.message, 'error'); });
   });
-  $('refresh-market').addEventListener('click', loadMarket);
+  $('refresh-market').addEventListener('click', () => loadMarket({ announce: true }));
   $('estimate-principal').addEventListener('input', renderYieldLens);
   $('tab-supply').addEventListener('click', () => setMode('supply'));
   $('tab-withdraw').addEventListener('click', () => setMode('withdraw'));
@@ -735,8 +781,9 @@ function initEvents() {
   $('max-button').addEventListener('click', maxAmount);
   $('action-form').addEventListener('submit', reviewSubmit);
   $('confirm-action').addEventListener('click', onConfirmClick);
-  $('cancel-review').addEventListener('click', () => { state.pendingAction = null; $('review-dialog').close(); });
+  $('cancel-review').addEventListener('click', () => { state.pendingAction = null; $('review-dialog').close(); showToast('Review closed. Nothing was sent.', 'info'); });
   $('review-dialog').addEventListener('close', () => { if (state.pendingAction?.kind !== 'reconcile') state.pendingAction = null; });
+  $('review-dialog').querySelector('.dialog-close-form button').addEventListener('click', () => showToast('Review closed. Nothing was sent.', 'info'));
   const injected = provider();
   if (injected?.on) {
     injected.on('accountsChanged', (accounts) => {
@@ -795,6 +842,6 @@ async function init() {
 }
 
 init().catch((error) => {
-  $('market-error').textContent = error.message || 'Current could not start.';
+  $('market-error').textContent = cleanCopy(error.message || 'Current could not start.');
   $('market-error').hidden = false;
 });

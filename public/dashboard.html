@@ -10,8 +10,9 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/styles.css" />
     <script type="module" src="/app.js"></script>
+    <script type="module" src="/visuals.js"></script>
   </head>
-  <body>
+  <body class="dashboard-page">
     <a class="skip-link" href="#main">Skip to content</a>
     <header class="topbar">
       <a class="brand" href="/" aria-label="Current home">
@@ -111,7 +112,7 @@
               <div><span>After 1 year</span><strong id="estimate-365">—</strong></div>
             </div>
             <p class="yield-estimate-status" id="yield-estimate-status" role="status">Waiting for live Aave rate data.</p>
-            <p class="yield-estimate-caveat" id="yield-estimate-caveat">Simple-interest estimate using today’s rate as if it stayed unchanged. Gross of POL network fees. Actual variable yield can be lower or higher and is not guaranteed.</p>
+            <p class="yield-estimate-caveat" id="yield-estimate-caveat">Simple interest estimate using today’s rate as if it stayed unchanged. Gross of POL network fees. Actual variable yield can be lower or higher and is not guaranteed.</p>
           </section>
         </div>
 
@@ -121,7 +122,7 @@
               <p class="card-overline">MOVE AT YOUR PACE</p>
               <h2 id="action-heading">Your next step</h2>
             </div>
-            <span class="lock-mark" aria-label="Non-custodial wallet actions">⌑</span>
+            <span class="lock-mark" aria-label="Wallet actions stay in your hands">⌑</span>
           </div>
 
           <div class="mode-switch" role="tablist" aria-label="Choose an action">
@@ -197,6 +198,7 @@
         <button class="primary-button dialog-primary" id="confirm-action" type="button"><span>Continue to wallet</span><span aria-hidden="true">↗</span></button>
       </div>
     </dialog>
+    <div class="bloom-layer" data-bloom aria-hidden="true"></div>
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   </body>
 </html>
