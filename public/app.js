@@ -580,8 +580,8 @@ async function confirmDialogAction() {
     if (action.step === 'approval') {
       const hash = await sendValidated(action.plan.approval, 'approval', action.amount);
       const pending = { hash, mode: 'approval', from: state.wallet, amount: action.amount.toString(), before: null };
-      savePending(pending);
       state.pendingAction = { kind: 'reconcile', pending };
+      savePending(pending);
       $('dialog-status').textContent = 'Approval submitted. Waiting for Polygon confirmation…';
       showToast('Approval sent. Waiting for Polygon confirmation.', 'info');
       setTransactionLink(hash);
@@ -612,8 +612,8 @@ async function confirmDialogAction() {
     const transaction = action.step === 'supply' ? action.plan.originalTransaction || action.plan : action.plan;
     const hash = await sendValidated(transaction, mode, action.amount);
     const pending = { hash, mode, from: state.wallet, amount: action.amount.toString(), before: before.toString() };
-    savePending(pending);
     state.pendingAction = { kind: 'reconcile', pending };
+    savePending(pending);
     $('dialog-status').textContent = 'Submitted to Polygon. Waiting for its receipt…';
     showToast('Transaction sent. Waiting for the Polygon receipt.', 'info');
     setTransactionLink(hash);
@@ -656,7 +656,14 @@ async function confirmDialogAction() {
 }
 
 function savePending(item) {
-  sessionStorage.setItem('current.pending', JSON.stringify(item));
+  try {
+    sessionStorage.setItem('current.pending', JSON.stringify(item));
+    return true;
+  } catch {
+    // The wallet has already submitted this transaction; keep its in-memory
+    // reconciliation state even when browser storage is unavailable.
+    return false;
+  }
 }
 
 function setTransactionLink(hash) {
