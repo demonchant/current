@@ -22,6 +22,7 @@ import {
 
 const $ = (id) => document.getElementById(id);
 const cleanCopy = (value) => String(value ?? '').replace(/-/g, ' ');
+const RATE_HISTORY_KEY = 'current.apy-history.v1';
 function wasWalletDismissed() { try { return sessionStorage.getItem('current-wallet-dismissed') === 'true'; } catch { return false; } }
 const state = {
   market: null,
@@ -109,6 +110,7 @@ async function loadMarket({ announce = false } = {}) {
     const market = data.market;
     const reserve = findUsdtReserve(market);
     state.market = { ...market, reserve, fetchedAt: new Date() };
+    recordRateSnapshot(Number(reserve.supplyInfo?.apy?.formatted));
     renderMarket();
     if (announce) showToast('Live Aave rate updated.');
     if (state.wallet) await refreshWallet();
@@ -147,8 +149,48 @@ function renderMarket() {
   $('market-data-note').textContent = paused ? 'Live data · supply currently unavailable' : 'Live Aave market data';
   window.dispatchEvent(new CustomEvent('current:rate', { detail: { value: `${rate}%`, source: 'Current Aave market rate' } }));
   $('market-error').hidden = true;
+  renderRateHistory(rate);
   renderWalletControls();
   renderYieldLens();
+}
+
+function readRateHistory() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(RATE_HISTORY_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed.filter((entry) => Number.isFinite(entry.t) && Number.isFinite(entry.r)) : [];
+  } catch { return []; }
+}
+
+function recordRateSnapshot(rate) {
+  if (!Number.isFinite(rate) || rate < 0) return;
+  try {
+    const history = readRateHistory();
+    const now = Date.now();
+    const last = history.at(-1);
+    if (last && now - last.t < 60_000) return;
+    history.push({ t: now, r: rate });
+    const cutoff = now - 30 * 24 * 60 * 60 * 1000;
+    localStorage.setItem(RATE_HISTORY_KEY, JSON.stringify(history.filter((entry) => entry.t >= cutoff).slice(-720)));
+  } catch { /* Rate chart history is best-effort browser-local data. */ }
+}
+
+function renderRateHistory(currentRate) {
+  const history = readRateHistory();
+  $('rate-history-current').textContent = `${currentRate}% now`;
+  if (!history.length) return;
+  const min = Math.min(...history.map((entry) => entry.r));
+  const max = Math.max(...history.map((entry) => entry.r));
+  const spread = max - min || Math.max(max * .1, .01);
+  const points = history.map((entry, index) => {
+    const x = history.length < 2 ? 160 : 2 + (index / (history.length - 1)) * 316;
+    const y = 56 - ((entry.r - (min - spread * .1)) / (spread * 1.2)) * 48;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  $('rate-history-line').setAttribute('points', points);
+  const firstSeen = new Date(history[0].t);
+  $('rate-history-range').textContent = history.length < 2
+    ? `First observation · ${firstSeen.toLocaleDateString()}`
+    : `${firstSeen.toLocaleDateString()} – ${new Date(history.at(-1).t).toLocaleDateString()} · ${history.length} observations`;
 }
 
 function renderYieldLens() {
@@ -289,13 +331,14 @@ async function refreshWallet() {
     renderWalletControls();
     return;
   }
-  const [tokenBalance, aTokenBalance, allowance, nativeBalance] = await Promise.all([
+  const [tokenBalance, aTokenBalance, allowance, nativeBalance, scaledBalance] = await Promise.all([
     ethCall(USDT_ADDRESS, encodeBalanceOf(state.wallet)),
     ethCall(AAVE_V3_POLYGON_ATOKEN, encodeBalanceOf(state.wallet)),
     ethCall(USDT_ADDRESS, encodeAllowance(state.wallet, AAVE_V3_POLYGON_POOL)),
     injected.request({ method: 'eth_getBalance', params: [state.wallet, 'latest'] }).then(BigInt),
+    ethCall(AAVE_V3_POLYGON_ATOKEN, `0x1da24f3e${state.wallet.slice(2).toLowerCase().padStart(64, '0')}`).catch(() => null),
   ]);
-  state.walletData = { tokenBalance, aTokenBalance, allowance, nativeBalance, fetchedAt: new Date() };
+  state.walletData = { tokenBalance, aTokenBalance, allowance, nativeBalance, scaledBalance, fetchedAt: new Date() };
   renderWalletHeader();
   renderWalletPosition();
   $('gas-balance').textContent = `${formatTokenAmount(nativeBalance, 18, 5)} POL`;
@@ -313,6 +356,9 @@ function renderWalletHeader() {
   if (!state.wallet) {
     $('position-value').textContent = 'Connect your wallet';
     $('position-value').classList.remove('has-value');
+    $('position-principal').textContent = '—';
+    $('position-interest').textContent = '—';
+    $('position-refreshed').textContent = 'Position not refreshed';
   }
 }
 
@@ -320,10 +366,23 @@ function renderWalletPosition() {
   if (!state.walletData) {
     $('position-value').textContent = state.wallet ? 'Waiting for Polygon' : 'Connect your wallet';
     $('position-value').classList.remove('has-value');
+    $('position-principal').textContent = '—';
+    $('position-interest').textContent = '—';
+    $('position-refreshed').textContent = 'Position not refreshed';
     return;
   }
   $('position-value').textContent = `${formatTokenAmount(state.walletData.aTokenBalance)} USDT`;
   $('position-value').classList.add('has-value');
+  if (state.walletData.scaledBalance !== null) {
+    const interest = state.walletData.aTokenBalance > state.walletData.scaledBalance
+      ? state.walletData.aTokenBalance - state.walletData.scaledBalance : 0n;
+    $('position-principal').textContent = `${formatTokenAmount(state.walletData.scaledBalance)} USDT`;
+    $('position-interest').textContent = `${formatTokenAmount(interest)} USDT`;
+  } else {
+    $('position-principal').textContent = 'Unavailable';
+    $('position-interest').textContent = 'Unavailable';
+  }
+  $('position-refreshed').textContent = `Last position refresh · ${state.walletData.fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
 }
 
 function marketIsFresh() {

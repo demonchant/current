@@ -70,10 +70,16 @@
               <span class="network-chip"><span class="polygon-glyph" aria-hidden="true">◉</span> Polygon</span>
             </div>
             <div class="position-total" id="position-value" aria-live="polite">Connect your wallet</div>
+            <div class="position-breakdown" aria-live="polite">
+              <div><span>Scaled principal basis</span><strong id="position-principal">—</strong></div>
+              <div><span>Accrued interest · est.</span><strong id="position-interest">—</strong></div>
+            </div>
+            <p class="position-note">Estimate uses Aave’s scaled aUSDT balance; aUSDT transfers can affect the principal basis.</p>
             <div class="position-foot">
               <span class="asset-chip"><span class="usdt-glyph" aria-hidden="true">₮</span> USDT</span>
               <span class="position-change" id="position-status">Your balance stays yours</span>
             </div>
+            <p class="position-refreshed" id="position-refreshed">Position not refreshed</p>
           </article>
 
           <div class="market-facts" aria-label="Market details">
@@ -103,6 +109,14 @@
             </div>
             <h2 id="yield-lens-title">If today held.</h2>
             <p class="yield-lens-intro">Explore what a chosen amount could earn at the current Aave rate. No wallet connection needed.</p>
+            <div class="rate-history" aria-labelledby="rate-history-title">
+              <div class="rate-history-head"><span id="rate-history-title">Observed supply APY</span><span id="rate-history-current">Waiting for rate</span></div>
+              <svg id="rate-history-chart" viewBox="0 0 320 64" role="img" aria-label="Observed Aave supply APY history. History builds on this device as rates are refreshed.">
+                <path class="rate-history-grid" d="M1 15.5H319 M1 47.5H319" />
+                <polyline id="rate-history-line" points="" />
+              </svg>
+              <div class="rate-history-foot"><span id="rate-history-range">History builds as rates are refreshed</span><span>APY · %</span></div>
+            </div>
             <label class="yield-amount-label" for="estimate-principal">Amount to explore <span>USDT</span></label>
             <div class="yield-amount-entry">
               <input id="estimate-principal" type="text" inputmode="decimal" autocomplete="off" placeholder="Enter an amount" aria-describedby="yield-estimate-status yield-estimate-caveat" />

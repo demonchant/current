@@ -318,3 +318,16 @@ body.is-busy #connect-top::after { content: ""; width: 11px; height: 11px; borde
 @keyframes touch-bloom { to { width: 150px; height: 150px; opacity: 0; border-color: rgba(72, 114, 238, .3); box-shadow: 0 0 0 12px rgba(253, 201, 33, .07); } }
 @media (max-width: 700px) { .wallet-disconnect { min-height: 33px; padding: 0 9px; font-size: 9px; } .cursor-aura { display: none; } }
 @media (prefers-reduced-motion: reduce) { .cursor-aura { display: none; } .touch-ripple { animation-duration: .01ms; } }
+/* Position attribution and locally observed APY history. */
+.position-breakdown { display: grid; gap: 7px; margin: -3px 0 14px; }
+.position-breakdown div { display: flex; justify-content: space-between; gap: 12px; color: #8c8192; font-size: 10px; }
+.position-breakdown strong { color: #514857; font-size: 10px; font-weight: 620; text-align: right; }
+.position-refreshed { margin: 8px 0 0; color: #958a9b; font-size: 9px; }
+.position-note { margin: -7px 0 12px; color: #958a9b; font-size: 8px; line-height: 1.45; }
+.rate-history { margin: 0 0 17px; padding: 11px 12px 8px; border: 1px solid #dce1ef; border-radius: 8px; background: rgba(255,255,255,.54); }
+.rate-history-head,.rate-history-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #63719a; font-size: 8px; }
+.rate-history-head span:last-child { color: #344a91; font-weight: 700; }
+.rate-history svg { display: block; width: 100%; height: 56px; margin: 6px 0 3px; overflow: visible; }
+.rate-history-grid { fill: none; stroke: #e5e8f1; stroke-width: 1; }
+.rate-history polyline { fill: none; stroke: #526fc7; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.rate-history-foot { color: #8d93a6; font-size: 7px; }
