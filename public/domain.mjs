@@ -117,7 +117,7 @@ export function validateWithdrawTransaction(tx, from, amountRaw) {
 export function amountFromInput(input, mode, walletBalance, positionBalance) {
   const amount = parseTokenAmount(input);
   const ceiling = mode === 'supply' ? BigInt(walletBalance ?? 0) : BigInt(positionBalance ?? 0);
-  if (amount > ceiling) throw new Error(mode === 'supply' ? 'Your USDT balance changed after the wallet action. Enter an amount within your current available balance.' : 'That is more than your Aave position.');
+  if (amount > ceiling) throw new Error(mode === 'supply' ? 'Your USDT balance changed after the wallet action. Enter an amount within your current available balance.' : 'Your Aave position changed after the wallet action. Enter an amount within your current supplied balance.');
   return amount;
 }
 

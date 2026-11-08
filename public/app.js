@@ -640,6 +640,7 @@ async function confirmDialogAction() {
     if (action.step === 'approval') {
       state.walletReturnSnapshot = {
         wallet: state.wallet,
+        mode: 'supply',
         amount: action.amount,
         tokenBalance: state.walletData.tokenBalance,
         aTokenBalance: state.walletData.aTokenBalance,
@@ -687,14 +688,13 @@ async function confirmDialogAction() {
     }
     const mode = action.kind;
     const before = await ethCall(AAVE_V3_POLYGON_ATOKEN, encodeBalanceOf(state.wallet));
-    if (mode === 'supply') {
-      state.walletReturnSnapshot = {
-        wallet: state.wallet,
-        amount: action.amount,
-        tokenBalance: state.walletData.tokenBalance,
-        aTokenBalance: before,
-      };
-    }
+    state.walletReturnSnapshot = {
+      wallet: state.wallet,
+      mode,
+      amount: action.amount,
+      tokenBalance: state.walletData.tokenBalance,
+      aTokenBalance: before,
+    };
     const transaction = action.step === 'supply' ? action.plan.originalTransaction || action.plan : action.plan;
     const hash = await sendValidated(transaction, mode, action.amount);
     const pending = { hash, mode, from: state.wallet, amount: action.amount.toString(), before: before.toString() };
@@ -924,23 +924,28 @@ async function refreshAfterWalletReturn(snapshot, attempt = 0) {
   if (!state.wallet || snapshot.wallet?.toLowerCase() !== state.wallet.toLowerCase()) return;
   try {
     await refreshWallet();
-    if (!state.walletData || state.mode !== 'supply') return;
-    const spent = snapshot.tokenBalance - state.walletData.tokenBalance;
-    const supplied = expectedBalanceDelta(snapshot.aTokenBalance, state.walletData.aTokenBalance, snapshot.amount, 'supply');
-    if (spent >= snapshot.amount && supplied) {
+    if (!state.walletData || state.mode !== snapshot.mode) return;
+    const supplyCompleted = snapshot.mode === 'supply' &&
+      snapshot.tokenBalance - state.walletData.tokenBalance >= snapshot.amount &&
+      expectedBalanceDelta(snapshot.aTokenBalance, state.walletData.aTokenBalance, snapshot.amount, 'supply');
+    const withdrawalCompleted = snapshot.mode === 'withdraw' &&
+      state.walletData.tokenBalance - snapshot.tokenBalance >= snapshot.amount &&
+      expectedBalanceDelta(snapshot.aTokenBalance, state.walletData.aTokenBalance, snapshot.amount, 'withdraw');
+    if (supplyCompleted || withdrawalCompleted) {
+      const label = snapshot.mode === 'supply' ? 'Supply' : 'Withdrawal';
       $('amount-input').value = '';
       try { sessionStorage.removeItem('current.pending'); } catch {}
       state.pendingAction = null;
       updateAmountSummary();
       renderWalletControls();
       if ($('review-dialog').open) {
-        $('dialog-status').textContent = 'Supply detected and verified from your updated Polygon balances. No second supply transaction is needed.';
+        $('dialog-status').textContent = `${label} detected and verified from your updated Polygon balances. No second transaction is needed.`;
         $('dialog-status').classList.remove('is-error');
         $('confirm-action').querySelector('span').textContent = 'Close';
         $('confirm-action').disabled = false;
       }
-      setWalletMessage('Supply detected. Your refreshed Polygon position confirms the USDT was supplied.');
-      showToast('Supply detected and verified from your updated Polygon balances.', 'success');
+      setWalletMessage(`${label} detected. Your refreshed Polygon balances confirm the transaction.`);
+      showToast(`${label} detected and verified from your updated Polygon balances.`, 'success');
     }
   } catch (error) { setWalletMessage(error.message || 'Could not refresh your Polygon balance.', true); }
 }
@@ -968,10 +973,11 @@ async function init() {
   }, 15_000);
   document.addEventListener('visibilitychange', async () => {
     if (document.hidden) {
-      if (state.mode === 'supply' && state.walletData) {
+      if (state.walletData && ['supply', 'withdraw'].includes(state.mode)) {
         try {
           state.walletReturnSnapshot = {
             wallet: state.wallet,
+            mode: state.mode,
             amount: parseTokenAmount($('amount-input').value),
             tokenBalance: state.walletData.tokenBalance,
             aTokenBalance: state.walletData.aTokenBalance,
