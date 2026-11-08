@@ -28,6 +28,7 @@ const state = {
   market: null,
   wallet: null,
   walletData: null,
+  walletReturnSnapshot: null,
   walletDismissed: wasWalletDismissed(),
   mode: 'supply',
   gqlBusy: false,
@@ -637,6 +638,12 @@ async function confirmDialogAction() {
     }
     await recheckBeforeWrite();
     if (action.step === 'approval') {
+      state.walletReturnSnapshot = {
+        wallet: state.wallet,
+        amount: action.amount,
+        tokenBalance: state.walletData.tokenBalance,
+        aTokenBalance: state.walletData.aTokenBalance,
+      };
       const hash = await sendValidated(action.plan.approval, 'approval', action.amount);
       const pending = { hash, mode: 'approval', from: state.wallet, amount: action.amount.toString(), before: null };
       state.pendingAction = { kind: 'reconcile', pending };
@@ -680,6 +687,14 @@ async function confirmDialogAction() {
     }
     const mode = action.kind;
     const before = await ethCall(AAVE_V3_POLYGON_ATOKEN, encodeBalanceOf(state.wallet));
+    if (mode === 'supply') {
+      state.walletReturnSnapshot = {
+        wallet: state.wallet,
+        amount: action.amount,
+        tokenBalance: state.walletData.tokenBalance,
+        aTokenBalance: before,
+      };
+    }
     const transaction = action.step === 'supply' ? action.plan.originalTransaction || action.plan : action.plan;
     const hash = await sendValidated(transaction, mode, action.amount);
     const pending = { hash, mode, from: state.wallet, amount: action.amount.toString(), before: before.toString() };
@@ -723,6 +738,7 @@ async function confirmDialogAction() {
     $('confirm-action').classList.remove('is-loading');
     $('confirm-action').removeAttribute('aria-busy');
     setBusy(false);
+    if (!document.hidden && state.walletReturnSnapshot) void refreshAfterWalletReturn(state.walletReturnSnapshot);
   }
 }
 
@@ -898,6 +914,36 @@ function initEvents() {
   }
 }
 
+async function refreshAfterWalletReturn(snapshot, attempt = 0) {
+  if (!snapshot || state.walletReturnSnapshot !== snapshot || document.hidden) return;
+  if (state.busy) {
+    if (attempt < 60) window.setTimeout(() => refreshAfterWalletReturn(snapshot, attempt + 1), 500);
+    return;
+  }
+  state.walletReturnSnapshot = null;
+  if (!state.wallet || snapshot.wallet?.toLowerCase() !== state.wallet.toLowerCase()) return;
+  try {
+    await refreshWallet();
+    if (!state.walletData || state.mode !== 'supply') return;
+    const spent = snapshot.tokenBalance - state.walletData.tokenBalance;
+    const supplied = expectedBalanceDelta(snapshot.aTokenBalance, state.walletData.aTokenBalance, snapshot.amount, 'supply');
+    if (spent >= snapshot.amount && supplied) {
+      $('amount-input').value = '';
+      try { sessionStorage.removeItem('current.pending'); } catch {}
+      state.pendingAction = null;
+      updateAmountSummary();
+      renderWalletControls();
+      if ($('review-dialog').open) {
+        $('dialog-status').textContent = 'Supply detected and verified from your updated Polygon balances. No second supply transaction is needed.';
+        $('dialog-status').classList.remove('is-error');
+        $('confirm-action').querySelector('span').textContent = 'Close';
+        $('confirm-action').disabled = false;
+      }
+      setWalletMessage('Supply detected. Your refreshed Polygon position confirms the USDT was supplied.');
+      showToast('Supply detected and verified from your updated Polygon balances.', 'success');
+    }
+  } catch (error) { setWalletMessage(error.message || 'Could not refresh your Polygon balance.', true); }
+}
 async function init() {
   initEvents();
   renderWalletControls();
@@ -920,8 +966,23 @@ async function init() {
     }
     if (!state.market || stale) loadMarket();
   }, 15_000);
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && (!state.market || Date.now() - state.market.fetchedAt.getTime() >= 60_000)) loadMarket();
+  document.addEventListener('visibilitychange', async () => {
+    if (document.hidden) {
+      if (state.mode === 'supply' && state.walletData) {
+        try {
+          state.walletReturnSnapshot = {
+            wallet: state.wallet,
+            amount: parseTokenAmount($('amount-input').value),
+            tokenBalance: state.walletData.tokenBalance,
+            aTokenBalance: state.walletData.aTokenBalance,
+          };
+        } catch { state.walletReturnSnapshot = null; }
+      }
+      return;
+    }
+    if (!state.market || Date.now() - state.market.fetchedAt.getTime() >= 60_000) loadMarket();
+    const snapshot = state.walletReturnSnapshot;
+    if (snapshot) void refreshAfterWalletReturn(snapshot);
   });
   const injected = provider();
   if (injected && !state.walletDismissed) {
