@@ -228,8 +228,19 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 }
 
+const discoveredEthereumProviders = new Map();
+window.addEventListener('eip6963:announceProvider', (event) => {
+  const detail = event.detail;
+  if (detail?.provider && typeof detail.provider.request === 'function') {
+    discoveredEthereumProviders.set(detail.info?.uuid || detail.info?.rdns || detail.info?.name || 'provider', detail.provider);
+  }
+});
+// Nimiq Pay supports EIP-6963 discovery in addition to window.ethereum.
+window.dispatchEvent(new Event('eip6963:requestProvider'));
+
 function provider() {
-  return window.ethereum && typeof window.ethereum.request === 'function' ? window.ethereum : null;
+  if (window.ethereum && typeof window.ethereum.request === 'function') return window.ethereum;
+  return discoveredEthereumProviders.values().next().value || null;
 }
 
 function setWalletMessage(message, error = false) {
@@ -242,8 +253,8 @@ function shortAddress(address) { return `${address.slice(0, 6)}…${address.slic
 async function connectWallet() {
   const injected = provider();
   if (!injected) {
-    setWalletMessage('Open this Mini App inside Nimiq Pay to connect.', true);
-    showToast('Wallet connection is available inside Nimiq Pay. No wallet was connected.', 'error');
+    setWalletMessage("Nimiq Pay's EVM wallet provider was not detected. Open Current from Nimiq Pay > Mini Apps, or load it using Nimiq Pay's Custom URL. If this message persists inside Nimiq Pay, contact Nimiq support.", true);
+    showToast('No Nimiq Pay EVM provider was detected. No wallet was connected.', 'error');
     return;
   }
   setBusy(true);
