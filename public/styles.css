@@ -331,3 +331,99 @@ body.is-busy #connect-top::after { content: ""; width: 11px; height: 11px; borde
 .rate-history-grid { fill: none; stroke: #e5e8f1; stroke-width: 1; }
 .rate-history polyline { fill: none; stroke: #526fc7; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 .rate-history-foot { color: #8d93a6; font-size: 7px; }
+
+/* Phone layout: native-feeling dashboard while retaining the same content and controls. */
+.mobile-tabbar { display: none; }
+@media (max-width: 700px) {
+  html { scroll-padding-top: calc(72px + env(safe-area-inset-top)); }
+  body.dashboard-page { min-width: 320px; padding-bottom: calc(80px + env(safe-area-inset-bottom)); background: #f2f4fa; }
+  .dashboard-page .topbar { position: sticky; z-index: 12; top: 0; height: auto; min-height: calc(59px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 16px 0; border-bottom: 1px solid rgba(31, 46, 88, .1); background: rgba(250, 251, 255, .94); backdrop-filter: blur(18px); }
+  .dashboard-page .brand { gap: 8px; }
+  .dashboard-page .brand-mark { width: 24px; height: 24px; }
+  .dashboard-page .brand-name { font-size: 17px; }
+  .dashboard-page .topbar-right { gap: 8px; }
+  .dashboard-page .wallet-pill { min-height: 39px; padding: 0 12px; border-color: #d8deeb; border-radius: 13px; background: #fff; font-size: 11px; }
+  .dashboard-page .wallet-disconnect { min-height: 39px; border-radius: 12px; }
+  .dashboard-page .page-shell { width: 100%; padding: 0 14px calc(20px + env(safe-area-inset-bottom)); }
+  .dashboard-page .intro { grid-template-columns: 1fr; gap: 0; min-height: 0; margin: 14px 0 13px; border: 0; border-radius: 22px; box-shadow: 0 12px 30px rgba(17, 30, 72, .12); }
+  .dashboard-page .intro-copy { padding: 22px 20px 13px; background: none; }
+  .dashboard-page .eyebrow { margin-bottom: 12px; font-size: 8px; letter-spacing: 1.2px; }
+  .dashboard-page .eyebrow-line { width: 18px; }
+  .dashboard-page .intro h1 { font-size: clamp(37px, 10vw, 50px); line-height: .98; letter-spacing: -.065em; }
+  .dashboard-page .intro h1 em { letter-spacing: -.07em; }
+  .dashboard-page .intro-lede { max-width: 340px; margin: 12px 0 10px; font-size: 11px; line-height: 1.5; }
+  .dashboard-page .intro-note { gap: 7px; }
+  .dashboard-page .intro-note p { font-size: 9px; }
+  .dashboard-page .note-icon { width: 18px; height: 18px; font-size: 10px; }
+  .dashboard-page .rate-card { min-height: 0; margin: 0 10px 10px; padding: 16px 17px 13px; border: 1px solid rgba(255,255,255,.18); border-radius: 16px; }
+  .dashboard-page .rate-card .card-overline { font-size: 8px; }
+  .dashboard-page .rate-subline { margin-top: 5px; font-size: 10px; }
+  .dashboard-page .live-badge { padding: 5px 7px; font-size: 8px; }
+  .dashboard-page .rate-value { height: 60px; font-size: 43px; }
+  .dashboard-page .rate-percent { font-size: 22px; }
+  .dashboard-page .rate-card-foot { padding-top: 9px; font-size: 9px; }
+  .dashboard-page .workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 11px; border: 0; }
+  .dashboard-page .position-column { display: contents; }
+  .dashboard-page .position-card { order: 1; min-height: 0; padding: 18px; border: 1px solid #e1e6f1; border-radius: 19px; background: #fff; box-shadow: 0 5px 18px rgba(26, 40, 80, .045); }
+  .dashboard-page .section-heading h2 { margin-top: 5px; font-size: 16px; }
+  .dashboard-page .network-chip { padding: 6px 8px; border-radius: 9px; font-size: 9px; }
+  .dashboard-page .position-total { min-height: 61px; font-size: 14px; }
+  .dashboard-page .position-total.has-value { font-size: clamp(29px, 8vw, 37px); }
+  .dashboard-page .position-breakdown { gap: 7px; }
+  .dashboard-page .position-note { font-size: 8px; line-height: 1.45; }
+  .dashboard-page .position-foot { padding-top: 10px; }
+  .dashboard-page .position-refreshed { margin-top: 9px; font-size: 8px; }
+  .dashboard-page .action-card { order: 2; padding: 19px 17px 16px; border: 1px solid #dce2ef; border-radius: 20px; background: #fff; box-shadow: 0 7px 22px rgba(26, 40, 80, .055); }
+  .dashboard-page .action-heading h2 { font-size: 18px; }
+  .dashboard-page .lock-mark { width: 34px; height: 34px; border-radius: 11px; }
+  .dashboard-page .mode-switch { gap: 5px; margin: 16px 0; padding: 4px; border-radius: 12px; }
+  .dashboard-page .mode-button { min-height: 42px; border-radius: 9px; font-size: 12px; }
+  .dashboard-page .amount-label { margin-bottom: 8px; font-size: 11px; }
+  .dashboard-page .available { max-width: 56%; font-size: 9px; text-align: right; }
+  .dashboard-page .amount-entry { height: 58px; padding: 0 13px; border-radius: 13px; }
+  .dashboard-page .amount-entry input { font-size: 19px; }
+  .dashboard-page .max-button { min-height: 34px; margin-left: 9px; padding: 0 10px; border-radius: 8px; font-size: 10px; }
+  .dashboard-page .field-hint { font-size: 9px; }
+  .dashboard-page .action-summary { margin: 14px 0; padding: 9px 0; }
+  .dashboard-page .summary-row { font-size: 10px; }
+  .dashboard-page .primary-button { min-height: 52px; border-radius: 13px; font-size: 13px; }
+  .dashboard-page .action-caption { margin-top: 10px; font-size: 9px; }
+  .dashboard-page .market-facts { order: 3; margin: 0; padding: 5px 16px 10px; border: 1px solid #e1e6f1; border-radius: 18px; background: #fff; }
+  .dashboard-page .fact-row { min-height: 42px; padding: 9px 0; }
+  .dashboard-page .fact-label, .dashboard-page .fact-value { font-size: 10px; }
+  .dashboard-page .freshness { font-size: 8px; }
+  .dashboard-page .yield-lens { order: 4; margin: 0; padding: 18px 16px 15px; border: 1px solid #d8deec; border-left: 3px solid #fdc921; border-radius: 18px; background: #f8f9fc; }
+  .dashboard-page .yield-lens h2 { font-size: 24px; }
+  .dashboard-page .yield-lens-intro { font-size: 10px; }
+  .dashboard-page .yield-results strong { font-size: 18px; }
+  .dashboard-page .trust-strip { grid-template-columns: 1fr 1fr; gap: 17px 12px; margin-top: 16px; padding: 18px 15px; border: 1px solid #e1e6f1; border-radius: 18px; background: #fff; }
+  .dashboard-page .trust-title-wrap h2 { font-size: 19px; }
+  .dashboard-page .trust-step { padding-left: 10px; }
+  .dashboard-page .trust-step h3 { font-size: 10px; }
+  .dashboard-page .trust-step p { font-size: 9px; }
+  .dashboard-page .risk-panel { margin-top: 12px; border-radius: 16px; }
+  .dashboard-page .footer { margin: 15px 4px 0; padding-bottom: 6px; font-size: 8px; }
+  .mobile-tabbar { position: fixed; z-index: 15; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 7px 8px calc(7px + env(safe-area-inset-bottom)); border-top: 1px solid rgba(29, 45, 88, .12); background: rgba(250, 251, 255, .96); box-shadow: 0 -6px 22px rgba(26, 40, 80, .06); backdrop-filter: blur(18px); }
+  .mobile-tabbar a { min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-radius: 12px; color: #7a849f; font-size: 9px; font-weight: 620; text-decoration: none; }
+  .mobile-tabbar a:active { background: #edf0f8; }
+  .mobile-tabbar svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .mobile-tabbar a[href="#action-card"] { color: #315bd1; }
+  .dashboard-page .review-dialog { position: fixed; inset: auto 0 0; width: 100%; max-width: none; max-height: min(92dvh, 760px); margin: 0; padding: 25px 20px calc(20px + env(safe-area-inset-bottom)); overflow-y: auto; border: 1px solid #d7ddeb; border-bottom: 0; border-radius: 22px 22px 0 0; box-shadow: 0 -18px 55px rgba(7, 16, 42, .2); }
+  .dashboard-page .review-dialog::before { content: ""; display: block; width: 38px; height: 4px; margin: -13px auto 19px; border-radius: 9px; background: #c9cfde; }
+  .dashboard-page .review-dialog::backdrop { background: rgba(7, 16, 42, .48); backdrop-filter: blur(3px); }
+  .dashboard-page .review-dialog h2 { font-size: 23px; }
+  .dashboard-page .dialog-details div { min-height: 35px; align-items: center; font-size: 11px; }
+  .dashboard-page .dialog-actions { gap: 10px; }
+  .dashboard-page .dialog-primary, .dashboard-page .secondary-button { min-height: 50px; border-radius: 12px; }
+  .dashboard-page .toast { bottom: calc(76px + env(safe-area-inset-bottom)); width: calc(100vw - 28px); padding: 12px 14px; border-radius: 13px; font-size: 11px; }
+  #market-overview, #position-card, #action-card, #how-it-works { scroll-margin-top: calc(74px + env(safe-area-inset-top)); }
+}
+@media (max-width: 390px) {
+  .dashboard-page .page-shell { padding-right: 11px; padding-left: 11px; }
+  .dashboard-page .intro-copy { padding-right: 17px; padding-left: 17px; }
+  .dashboard-page .position-card, .dashboard-page .action-card { padding-right: 14px; padding-left: 14px; }
+  .dashboard-page .trust-strip { grid-template-columns: 1fr; }
+  .dashboard-page .trust-step { padding: 11px 0 0; border-top: 1px solid #d2d7e7; border-left: 0; }
+  .dashboard-page .trust-step:nth-of-type(2) { border-top: 0; }
+  .mobile-tabbar a { min-height: 50px; }
+}

@@ -30,7 +30,7 @@
     </header>
 
     <main id="main" class="page-shell">
-      <section class="intro" aria-labelledby="page-title">
+      <section class="intro" id="market-overview" aria-labelledby="page-title">
         <div class="intro-copy">
           <div class="eyebrow"><span class="eyebrow-line"></span> Aave V3 · Polygon</div>
           <h1 id="page-title">Give your USDT<br />room to <em>grow.</em></h1>
@@ -61,7 +61,7 @@
 
       <section class="workspace" aria-label="Your Aave position">
         <div class="position-column">
-          <article class="position-card">
+          <article class="position-card" id="position-card">
             <div class="section-heading">
               <div>
                 <p class="card-overline">YOUR POSITION</p>
@@ -131,7 +131,7 @@
           </section>
         </div>
 
-        <article class="action-card" aria-labelledby="action-heading">
+        <article class="action-card" id="action-card" aria-labelledby="action-heading">
           <div class="section-heading action-heading">
             <div>
               <p class="card-overline">MOVE AT YOUR PACE</p>
@@ -192,6 +192,24 @@
       </footer>
     </main>
 
+    <nav class="mobile-tabbar" aria-label="Dashboard sections">
+      <a href="#market-overview">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5M5.5 9v11h13V9M9 20v-6h6v6" /></svg>
+        <span>Market</span>
+      </a>
+      <a href="#position-card">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><path d="M7.5 15.5v-3m4 3v-6m4 6v-4" /></svg>
+        <span>Position</span>
+      </a>
+      <a href="#action-card">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M17.5 7.5c0-1.7-1.8-3-5.1-3S7 5.7 7 7.4c0 4.3 10 1.6 10 6 0 1.9-2 3.3-5.3 3.3S6.5 15.2 6.5 13" /></svg>
+        <span>Action</span>
+      </a>
+      <a href="#how-it-works">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9.6 9a2.5 2.5 0 1 1 4.2 1.8c-1.2 1.1-1.8 1.4-1.8 3m0 3h.01" /></svg>
+        <span>Guide</span>
+      </a>
+    </nav>
     <dialog id="review-dialog" class="review-dialog" aria-labelledby="dialog-title">
       <form method="dialog" class="dialog-close-form"><button class="icon-button close-button" aria-label="Close review">×</button></form>
       <p class="card-overline" id="dialog-overline">TRANSACTION REVIEW</p>
