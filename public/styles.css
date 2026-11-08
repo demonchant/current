@@ -334,6 +334,7 @@ body.is-busy #connect-top::after { content: ""; width: 11px; height: 11px; borde
 
 /* Phone layout: native-feeling dashboard while retaining the same content and controls. */
 .mobile-tabbar { display: none; }
+.mobile-host-note { display: none; }
 @media (max-width: 700px) {
   html { scroll-padding-top: calc(72px + env(safe-area-inset-top)); }
   body.dashboard-page { min-width: 320px; padding-bottom: calc(80px + env(safe-area-inset-bottom)); background: #f2f4fa; }
@@ -345,6 +346,7 @@ body.is-busy #connect-top::after { content: ""; width: 11px; height: 11px; borde
   .dashboard-page .wallet-pill { min-height: 39px; padding: 0 12px; border-color: #d8deeb; border-radius: 13px; background: #fff; font-size: 11px; }
   .dashboard-page .wallet-disconnect { min-height: 39px; border-radius: 12px; }
   .dashboard-page .page-shell { width: 100%; padding: 0 14px calc(20px + env(safe-area-inset-bottom)); }
+  .mobile-host-note { display: block; margin: 10px 14px 0; padding: 10px 12px; border: 1px solid #d9e2f6; border-radius: 12px; background: #eef3ff; color: #34466f; font-size: 10px; line-height: 1.45; }
   .dashboard-page .intro { grid-template-columns: 1fr; gap: 0; min-height: 0; margin: 14px 0 13px; border: 0; border-radius: 22px; box-shadow: 0 12px 30px rgba(17, 30, 72, .12); }
   .dashboard-page .intro-copy { padding: 22px 20px 13px; background: none; }
   .dashboard-page .eyebrow { margin-bottom: 12px; font-size: 8px; letter-spacing: 1.2px; }
@@ -404,10 +406,32 @@ body.is-busy #connect-top::after { content: ""; width: 11px; height: 11px; borde
   .dashboard-page .risk-panel { margin-top: 12px; border-radius: 16px; }
   .dashboard-page .footer { margin: 15px 4px 0; padding-bottom: 6px; font-size: 8px; }
   .mobile-tabbar { position: fixed; z-index: 15; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 7px 8px calc(7px + env(safe-area-inset-bottom)); border-top: 1px solid rgba(29, 45, 88, .12); background: rgba(250, 251, 255, .96); box-shadow: 0 -6px 22px rgba(26, 40, 80, .06); backdrop-filter: blur(18px); }
-  .mobile-tabbar a { min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-radius: 12px; color: #7a849f; font-size: 9px; font-weight: 620; text-decoration: none; }
-  .mobile-tabbar a:active { background: #edf0f8; }
+  .mobile-tabbar button { min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 0; border-radius: 12px; background: transparent; color: #7a849f; font: inherit; font-size: 9px; font-weight: 620; cursor: pointer; }
+  .mobile-tabbar button:active { background: #edf0f8; }
+  .mobile-tabbar button[aria-current="page"] { background: #edf1fc; color: #315bd1; }
   .mobile-tabbar svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-  .mobile-tabbar a[href="#action-card"] { color: #315bd1; }
+  .dashboard-page[data-mobile-page] #main > .intro,
+  .dashboard-page[data-mobile-page] #main > .workspace,
+  .dashboard-page[data-mobile-page] #main > .trust-strip,
+  .dashboard-page[data-mobile-page] #main > .risk-panel,
+  .dashboard-page[data-mobile-page] #main > .footer { display: none; }
+  .dashboard-page[data-mobile-page] #main > .workspace .position-card,
+  .dashboard-page[data-mobile-page] #main > .workspace .action-card,
+  .dashboard-page[data-mobile-page] #main > .workspace .market-facts,
+  .dashboard-page[data-mobile-page] #main > .workspace .yield-lens { display: none; }
+  .dashboard-page[data-mobile-page="market"] #main > .intro,
+  .dashboard-page[data-mobile-page="market"] #main > .workspace { display: grid; }
+  .dashboard-page[data-mobile-page="market"] #main > .workspace .market-facts,
+  .dashboard-page[data-mobile-page="market"] #main > .workspace .yield-lens { display: block; }
+  .dashboard-page[data-mobile-page="position"] #main > .workspace,
+  .dashboard-page[data-mobile-page="action"] #main > .workspace { display: grid; }
+  .dashboard-page[data-mobile-page="position"] #main > .workspace .position-card,
+  .dashboard-page[data-mobile-page="position"] #main > .workspace .market-facts,
+  .dashboard-page[data-mobile-page="action"] #main > .workspace .action-card { display: block; }
+  .dashboard-page[data-mobile-page="guide"] #main > .trust-strip,
+  .dashboard-page[data-mobile-page="guide"] #main > .risk-panel,
+  .dashboard-page[data-mobile-page="guide"] #main > .footer { display: grid; }
+  .dashboard-page[data-mobile-page="guide"] #main > .footer { display: flex; }
   .dashboard-page .review-dialog { position: fixed; inset: auto 0 0; width: 100%; max-width: none; max-height: min(92dvh, 760px); margin: 0; padding: 25px 20px calc(20px + env(safe-area-inset-bottom)); overflow-y: auto; border: 1px solid #d7ddeb; border-bottom: 0; border-radius: 22px 22px 0 0; box-shadow: 0 -18px 55px rgba(7, 16, 42, .2); }
   .dashboard-page .review-dialog::before { content: ""; display: block; width: 38px; height: 4px; margin: -13px auto 19px; border-radius: 9px; background: #c9cfde; }
   .dashboard-page .review-dialog::backdrop { background: rgba(7, 16, 42, .48); backdrop-filter: blur(3px); }
@@ -425,5 +449,5 @@ body.is-busy #connect-top::after { content: ""; width: 11px; height: 11px; borde
   .dashboard-page .trust-strip { grid-template-columns: 1fr; }
   .dashboard-page .trust-step { padding: 11px 0 0; border-top: 1px solid #d2d7e7; border-left: 0; }
   .dashboard-page .trust-step:nth-of-type(2) { border-top: 0; }
-  .mobile-tabbar a { min-height: 50px; }
+  .mobile-tabbar button { min-height: 50px; }
 }

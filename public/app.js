@@ -961,6 +961,7 @@ async function refreshAfterWalletReturn(snapshot, attempt = 0) {
   } catch (error) { setWalletMessage(error.message || 'Could not refresh your Polygon balance.', true); }
 }
 async function init() {
+  initMobilePages();
   initEvents();
   renderWalletControls();
   const pending = savedPending();
@@ -1013,6 +1014,22 @@ async function init() {
       }
     } catch (error) { setWalletMessage(error.message || 'Could not read wallet state.', true); }
   }
+}
+
+function initMobilePages() {
+  const nav = document.querySelector('.mobile-tabbar');
+  if (!nav) return;
+  const buttons = [...nav.querySelectorAll('[data-mobile-page]')];
+  buttons.forEach((button) => {
+    button.addEventListener('click', () => {
+      document.body.dataset.mobilePage = button.dataset.mobilePage;
+      buttons.forEach((item) => {
+        if (item === button) item.setAttribute('aria-current', 'page');
+        else item.removeAttribute('aria-current');
+      });
+      window.scrollTo(0, 0);
+    });
+  });
 }
 
 init().catch((error) => {

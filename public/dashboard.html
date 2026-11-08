@@ -12,7 +12,7 @@
     <script type="module" src="/app.js"></script>
     <script type="module" src="/visuals.js"></script>
   </head>
-  <body class="dashboard-page">
+  <body class="dashboard-page" data-mobile-page="market">
     <a class="skip-link" href="#main">Skip to content</a>
     <header class="topbar">
       <a class="brand" href="/" aria-label="Current home">
@@ -28,6 +28,8 @@
         <button class="wallet-disconnect" id="disconnect-top" type="button" hidden>Disconnect</button>
       </div>
     </header>
+
+    <aside class="mobile-host-note" role="note">To access Current on mobile, download Nimiq Pay and open Current from its Mini Apps section.</aside>
 
     <main id="main" class="page-shell">
       <section class="intro" id="market-overview" aria-labelledby="page-title">
@@ -192,23 +194,23 @@
       </footer>
     </main>
 
-    <nav class="mobile-tabbar" aria-label="Dashboard sections">
-      <a href="#market-overview">
+    <nav class="mobile-tabbar" aria-label="App pages">
+      <button type="button" data-mobile-page="market" aria-current="page">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5M5.5 9v11h13V9M9 20v-6h6v6" /></svg>
         <span>Market</span>
-      </a>
-      <a href="#position-card">
+      </button>
+      <button type="button" data-mobile-page="position">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><path d="M7.5 15.5v-3m4 3v-6m4 6v-4" /></svg>
         <span>Position</span>
-      </a>
-      <a href="#action-card">
+      </button>
+      <button type="button" data-mobile-page="action">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M17.5 7.5c0-1.7-1.8-3-5.1-3S7 5.7 7 7.4c0 4.3 10 1.6 10 6 0 1.9-2 3.3-5.3 3.3S6.5 15.2 6.5 13" /></svg>
         <span>Action</span>
-      </a>
-      <a href="#how-it-works">
+      </button>
+      <button type="button" data-mobile-page="guide">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9.6 9a2.5 2.5 0 1 1 4.2 1.8c-1.2 1.1-1.8 1.4-1.8 3m0 3h.01" /></svg>
         <span>Guide</span>
-      </a>
+      </button>
     </nav>
     <dialog id="review-dialog" class="review-dialog" aria-labelledby="dialog-title">
       <form method="dialog" class="dialog-close-form"><button class="icon-button close-button" aria-label="Close review">×</button></form>
