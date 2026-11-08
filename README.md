@@ -6,6 +6,8 @@
 
 > Current submits real Polygon mainnet transactions through the connected wallet. Aave rates vary, returns are not guaranteed, and protocol, smart contract, token, and network risks apply. Review every wallet prompt and network fee before signing.
 
+## Demo note: Current opens inside Nimiq Pay. During recording, Nimiq Pay displayed a notice that USDT payments were temporarily unavailable, so the video uses MetaMask to demonstrate the Polygon/Aave flow.
+
 ## The problem
 
 Using a lending market can involve switching between a market page, a wallet, token approval prompts, a protocol transaction, and a block explorer. That makes it harder to understand what is being authorized and whether a transaction actually completed.
