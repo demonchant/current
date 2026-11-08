@@ -657,9 +657,21 @@ async function confirmDialogAction() {
       const allowance = await ethCall(USDT_ADDRESS, encodeAllowance(state.wallet, AAVE_V3_POLYGON_POOL));
       if (allowance !== action.amount) throw new Error('Approval receipt confirmed, but Polygon read back did not show the exact requested allowance. Supply remains disabled.');
       sessionStorage.removeItem('current.pending');
+      state.pendingAction = null;
+      $('confirm-action').querySelector('span').textContent = 'Close';
+      $('confirm-action').disabled = false;
+      // Rebuild the Aave plan after allowance confirmation so the wallet gets
+      // a fresh supply call, never a stale approval plan.
+      const refreshedPlan = await gql(makeSupplyQuery(action.amount));
+      const supplyPlan = refreshedPlan.supply;
+      if (!supplyPlan || supplyPlan.__typename !== 'TransactionRequest') {
+        throw new Error('Approval confirmed, but Aave did not return a separate supply transaction. Refresh and review again.');
+      }
+      validateSupplyTransaction(supplyPlan, state.wallet, action.amount);
+      action.plan = supplyPlan;
       state.pendingAction = action;
       action.step = 'supply';
-      $('dialog-status').textContent = 'Exact approval confirmed on Polygon. Review and approve the separate supply transaction in Nimiq Pay.';
+      $('dialog-status').textContent = 'Exact approval confirmed on Polygon. A fresh supply transaction is ready for review in Nimiq Pay.';
       showToast('Exact approval confirmed. Review the separate supply action.', 'success');
       $('confirm-action').querySelector('span').textContent = 'Supply in wallet';
       $('confirm-action').disabled = false;
