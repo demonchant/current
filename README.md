@@ -33,6 +33,7 @@ Current is non-custodial. It does not receive private keys or move funds without
 - **Open in Nimiq Pay:** [Launch Current](https://nimpay.app/miniapps/open/current.oladapodamiey.workers.dev)
 - **Live web app:** [current.oladapodamiey.workers.dev](https://current.oladapodamiey.workers.dev/)
 - **Video walkthrough:** [Current supply, withdrawal, and PolygonScan confirmations](https://youtu.be/EDPMHaYVrj0)
+- **X post:** [Current update](https://x.com/thoyourbaby/status/2119029326611919338)
 - **GitHub:** [demonchant/current](https://github.com/demonchant/current)
 
 For the intended wallet experience, use **Launch Current** to open the Mini App through Nimiq Pay. The live web app is also available directly for inspection, but transaction actions require the compatible EVM wallet provider supplied by the Nimiq Pay host. Current's transaction path is configured for Polygon mainnet; switching Nimiq Pay’s Nimiq network does not change the EVM transaction network.
