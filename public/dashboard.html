@@ -186,6 +186,8 @@
             <button class="primary-button" id="review-button" type="submit" disabled>
               <span id="primary-label">Connect wallet</span><span aria-hidden="true">↗</span>
             </button>
+            <button class="secondary-button relay-button" id="nim-relay-button" type="button" hidden disabled>Supply with NIM-paid gas</button>
+            <p class="relay-caption" id="nim-relay-caption" hidden>Optional relay. Review the exact NIM fee and recipient before paying. Relayer availability and manual refund review terms apply.</p>
             <p class="action-caption" id="action-caption">Your wallet will show each transaction for approval.</p>
           </form>
         </article>
@@ -243,11 +245,13 @@
         <div><dt>Asset</dt><dd>USDT · Polygon</dd></div>
         <div><dt>Protocol</dt><dd>Aave V3</dd></div>
         <div><dt>Transaction target</dt><dd id="transaction-target">Aave V3 Polygon pool</dd></div>
-        <div><dt>Network gas</dt><dd>POL · paid from your wallet</dd></div>
+        <div id="network-gas-row"><dt>Network gas</dt><dd>POL · paid from your wallet</dd></div>
+        <div id="relay-fee-row" hidden><dt>NIM relay fee</dt><dd id="relay-fee-detail">—</dd></div>
         <div id="approval-detail-row" hidden><dt>Allowance</dt><dd id="approval-detail">Exact amount only</dd></div>
       </dl>
       <p class="dialog-risk" id="dialog-risk">Rates and liquidity can change. Each transaction is confirmed by your wallet.</p>
       <p class="dialog-status" id="dialog-status" role="status" aria-live="polite"></p>
+      <a class="transaction-link" id="relay-support-link" href="#" target="_blank" rel="noreferrer" hidden>Contact relay support ↗</a>
       <a class="transaction-link" id="transaction-link" href="#" target="_blank" rel="noreferrer" hidden>View transaction on PolygonScan ↗</a>
       <div class="dialog-actions">
         <button class="secondary-button" id="cancel-review" type="button">Cancel</button>

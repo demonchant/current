@@ -29,6 +29,7 @@ Together, the market view answers “what is available now?”, the position ans
 - Lets each connected wallet save a private, browser-local target amount and date and see progress from its live aUSDT balance.
 - Prepares supply and withdrawal transactions for the exact amount entered and shows a review before wallet authorization.
 - Uses Polygon USDT's EIP-2612 permit with Aave's `supplyWithPermit` when approval is needed: one short-lived exact-amount signature, then one on-chain supply transaction. Users can choose the standard exact-approval route if their wallet cannot sign typed data.
+- Offers optional NIM-paid Polygon gas inside Nimiq Pay. The app displays the operator-set NIM fee, recipient, and unique memo; the Worker verifies the NIM payment and exact USDT permit before its funded Polygon relayer submits `supplyWithPermit` on behalf of the user.
 - Checks the Polygon transaction receipt and updated position before reporting a completed action; links to PolygonScan for independent inspection.
 
 Current is non-custodial software. It does not collect seed phrases or private keys. Wallet permissions and transaction confirmations are handled by the wallet host. Review every prompt; no app or wallet can guarantee a protocol outcome or investment return.
@@ -76,7 +77,9 @@ Current's live transaction path targets **Polygon PoS mainnet (chain ID 137)**.
 | Aave USDT reserve token (aUSDT) | `0x6ab707Aca953eDAeFBc4fD23bA73294241490620` |
 | Aave market API | `https://api.v3.aave.com/graphql` |
 
-Supply requires USDT and POL for Polygon gas. When an allowance is needed, the default flow requests a short-lived typed signature for the exact amount and Aave Pool spender, then asks the wallet to confirm a single `supplyWithPermit` Polygon transaction. The signature alone does not move funds, and the supply transaction still requires POL gas. If the wallet does not support typed-data signing, the user can explicitly switch to a conventional exact USDT approval followed by a separate supply transaction. Withdrawal remains a direct Aave withdrawal action. The wallet prompt is authoritative: verify the token, amount, network, contract, and fee before confirming. See the [Aave V3 Pool reference](https://www.aave.com/docs/aave-v3/smart-contracts/pool) and [Polygon USDT0 EIP-2612 guidance](https://docs.usdt0.to/technical-documentation/token-features/eip-2612) for the permit interface and Polygon-specific signing domain.
+The standard supply path requires USDT and POL for Polygon gas. When an allowance is needed, it requests a short-lived typed signature for the exact amount and Aave Pool spender, then asks the wallet to confirm one `supplyWithPermit` Polygon transaction. If typed-data signing is unavailable, the user can choose exact USDT approval followed by a separate supply transaction. Withdrawal remains a direct Aave withdrawal action.
+
+Inside Nimiq Pay, users can alternatively choose **Supply with NIM-paid gas** when the relay is configured. The wallet signs two separate authorizations: an exact, short-lived USDT permit for Aave and a NIM payment with the displayed recipient and unique quote memo. The Cloudflare Worker simulates the exact Aave call before showing the payment prompt, then checks the NIM transaction before relaying the supply. The NIM fee is fixed by the operator, not a live estimate of Polygon gas. If supply fails after NIM is received, the app reports **manual fee review**; it does not promise an automatic refund. Check every wallet prompt and never repeat a payment while relay status is pending. See the [Aave V3 Pool reference](https://www.aave.com/docs/aave-v3/smart-contracts/pool), [Polygon USDT0 EIP-2612 guidance](https://docs.usdt0.to/technical-documentation/token-features/eip-2612), and [Nimiq payment API](https://nimiq.dev/mini-apps/api-reference/nimiq-provider).
 
 ## Run locally
 
@@ -101,16 +104,23 @@ In a second terminal, run `npm run e2e`. Browser automation covers interface beh
 
 ## Deploy
 
-The repository serves static assets through a Cloudflare Worker. Deploy with Wrangler authenticated to the account that owns the Worker:
+The app and `/api/relay/*` endpoint run in one Cloudflare Worker. Deploy with Wrangler authenticated to the account that owns the Worker:
 
 ```sh
 npx wrangler deploy
 ```
 
+The NIM relay stays disabled until configured. In the Worker dashboard, set runtime variables `NIM_FEE_ADDRESS` (Nimiq mainnet recipient), `NIM_RELAY_FEE_LUNA` (positive integer; 100,000 Luna = 1 NIM), `POLYGON_RPC_URL`, `NIMIQ_RPC_URL`, and `RELAY_SUPPORT_URL` (HTTPS support page). Add `RELAYER_PRIVATE_KEY` as a Cloudflare Worker secret using the dashboard or `npx wrangler secret put RELAYER_PRIVATE_KEY`. Use a dedicated relayer wallet funded with POL. Never commit these values or put the private key in browser code, README, GitHub, or chat. After configuring, deploy and confirm `/api/relay/status` returns `{"enabled":true,"feeUnit":"luna"}`. When configured, the relay button appears; it is disabled and explains that Nimiq Pay access is missing if the host has no NIM payment provider.
+
+The relayer wallet pays Polygon gas and submits supply transactions for the permit owner. Monitor its POL balance. Durable Objects prevent reuse of the same NIM payment hash across quotes and track supply status. A failed or reverted supply after verified NIM payment enters manual review; no automatic NIM refund is provided. Publish a support contact and refund policy before enabling the relay for public use.
+
+Set `RELAY_SUPPORT_URL` to an HTTPS support page before enabling the relay; it is shown when a payment needs manual review. Market data and wallet access are explicitly shown as unavailable when their providers cannot be reached. The live host wallet prompt and transaction behavior still require validation inside Nimiq Pay after deployment; a browser preview is not proof of an in-app wallet transaction.
+
 ## Repository map
 
 ```text
 public/                 Landing page, app, styles, wallet flow, and domain validation
+worker/index.js         Cloudflare relay API and NIM payment verification
 server.mjs              Local development server
 wrangler.jsonc          Cloudflare Worker static-asset configuration
 tests/                  Domain and transaction validation tests

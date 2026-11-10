@@ -27,6 +27,8 @@ const cleanCopy = (value) => String(value ?? '').replace(/-/g, ' ');
 const RATE_HISTORY_KEY = 'current.apy-history.v1';
 const FX_CACHE_KEY = 'current.usd-ngn.v1';
 const FX_ENDPOINT = 'https://open.er-api.com/v6/latest/USD';
+const RELAY_PENDING_KEY = 'current.relay.pending.v1';
+let nimRelayEnabled = false;
 function wasWalletDismissed() { try { return sessionStorage.getItem('current-wallet-dismissed') === 'true'; } catch { return false; } }
 const state = {
   market: null,
@@ -671,6 +673,12 @@ function renderWalletControls() {
   const hasAmount = validAmountForCurrentMode();
   const canWrite = onPolygon && actionAvailable && hasAmount && BigInt(state.walletData?.nativeBalance ?? 0) > 0n && !state.busy;
   $('review-button').disabled = !canWrite;
+  const relayButton = $('nim-relay-button');
+  relayButton.hidden = !nimRelayEnabled || state.mode !== 'supply';
+  $('nim-relay-caption').hidden = relayButton.hidden;
+  relayButton.disabled = !nimRelayEnabled || !onPolygon || state.mode !== 'supply' || !actionAvailable || !hasAmount || state.busy || !window.nimiq?.sendBasicTransactionWithData;
+  if (!relayButton.hidden && !window.nimiq?.sendBasicTransactionWithData) $('nim-relay-caption').textContent = 'Nimiq Pay payment access is unavailable here. Open Current in the Nimiq Pay app to use NIM-paid gas.';
+  else if (!relayButton.hidden) $('nim-relay-caption').textContent = 'Optional relay. Review the exact NIM fee and recipient before paying. A failed relay may need manual fee review.';
   $('connect-top').disabled = state.busy;
   $('disconnect-top').disabled = state.busy;
   if (!connected) $('primary-label').textContent = 'Connect wallet';
@@ -684,6 +692,15 @@ function renderWalletControls() {
       : BigInt(state.walletData.nativeBalance) === 0n ? 'Add POL to your Polygon wallet before a transaction.'
         : state.mode === 'supply' ? 'Supply: exact permit signature, then one POL-fee transaction. Standard approval is available as a fallback.' : 'Your wallet will show the withdrawal transaction for approval.';
   updateAmountSummary();
+}
+
+async function loadNimRelayStatus() {
+  try {
+    const response = await fetch('/api/relay/status', { headers: { accept: 'application/json' }, cache: 'no-store' });
+    const data = await response.json();
+    nimRelayEnabled = response.ok && data.enabled === true;
+  } catch { nimRelayEnabled = false; }
+  renderWalletControls();
 }
 
 function validAmountForCurrentMode() {
@@ -809,26 +826,114 @@ async function prepareAction(amount) {
 
 function setDialogPlan(action) {
   state.pendingAction = action;
+  const usesNimRelay = action.step === 'nimRelay';
+  const isRelayAction = usesNimRelay || action.step === 'relayStatus';
   const needsApproval = action.kind === 'supply' && action.step === 'approval';
   const usesPermit = action.kind === 'supply' && action.step === 'permit';
-  $('dialog-action').textContent = needsApproval ? 'Approve exact spend' : action.kind === 'supply' ? 'Supply to Aave' : 'Withdraw from Aave';
+  $('dialog-action').textContent = action.step === 'relayStatus' ? 'NIM gas relay status' : usesNimRelay ? 'Supply with NIM-paid gas' : needsApproval ? 'Approve exact spend' : action.kind === 'supply' ? 'Supply to Aave' : 'Withdraw from Aave';
   $('dialog-amount').textContent = `${formatTokenAmount(action.amount)} USDT`;
-  $('transaction-target').textContent = needsApproval
+  $('transaction-target').textContent = usesNimRelay ? `Aave V3 Polygon pool · ${AAVE_V3_POLYGON_POOL}` : needsApproval
     ? `USDT token · ${USDT_ADDRESS}`
     : `Aave V3 pool · ${AAVE_V3_POLYGON_POOL}`;
-  $('approval-detail-row').hidden = !(needsApproval || usesPermit);
+  $('approval-detail-row').hidden = isRelayAction || !(needsApproval || usesPermit);
   $('approval-detail-row').querySelector('dt').textContent = usesPermit ? 'Permit' : 'Allowance';
   $('approval-detail').textContent = `${formatTokenAmount(action.amount)} USDT · exact amount${usesPermit ? ' · expires in 20 minutes' : ' · one-time approval'}`;
-  $('dialog-status').textContent = needsApproval
+  $('relay-fee-row').hidden = !isRelayAction;
+  $('relay-fee-detail').textContent = isRelayAction ? `${(Number(action.quote.fee) / 100000).toFixed(5)} NIM · to ${action.quote.recipient} · memo ${action.quote.memo}` : '—';
+  $('network-gas-row').querySelector('dd').textContent = isRelayAction ? 'POL paid by Current relayer' : 'POL · paid from your wallet';
+  $('relay-support-link').href = isRelayAction ? action.quote.supportUrl : '#';
+  $('relay-support-link').hidden = !isRelayAction;
+  $('dialog-status').textContent = action.step === 'relayStatus'
+    ? 'Resumed a previously submitted NIM payment. Check relay status below; do not make another payment.'
+    : usesNimRelay
+    ? 'Your wallet will first sign a NIM transfer to the displayed recipient. Current verifies that payment, then its relayer submits your exact USDT supply to Aave. The permit authorizes only this amount and expires shortly. A failed relay may require manual fee review; do not repeat the NIM payment.'
+    : needsApproval
     ? 'Aave requests a one-time approval limited to this exact amount. The supply requires a separate confirmation afterward.'
     : usesPermit ? 'Sign a short-lived typed permit for this exact amount to Aave, then confirm one Polygon supply transaction. The permit does not move funds; the supply transaction needs POL for gas.'
     : action.kind === 'supply' ? 'The next wallet prompt will supply this exact amount to the verified Aave V3 Polygon pool.' : 'The next wallet prompt will withdraw this exact amount to your connected wallet.';
   $('permit-fallback').hidden = !usesPermit;
   $('dialog-status').classList.remove('is-error');
   $('confirm-action').disabled = false;
-  $('confirm-action').querySelector('span').textContent = needsApproval ? 'Approve in wallet' : usesPermit ? 'Sign permit and continue' : 'Continue to wallet';
+  $('confirm-action').querySelector('span').textContent = action.step === 'relayStatus' ? 'Check relay status' : usesNimRelay ? 'Pay NIM & supply' : needsApproval ? 'Approve in wallet' : usesPermit ? 'Sign permit and continue' : 'Continue to wallet';
   $('transaction-link').hidden = true;
   if (!$('review-dialog').open) $('review-dialog').showModal();
+}
+
+async function postRelay(path, body) {
+  const response = await fetch(`/api/relay/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body) });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.message || result.error || 'The NIM gas relay request failed.');
+  return result;
+}
+
+async function prepareNimRelay() {
+  if (!state.wallet || !state.walletData || !window.nimiq?.sendBasicTransactionWithData) throw new Error('Open Current inside Nimiq Pay to use the NIM gas relay.');
+  if (state.mode !== 'supply') throw new Error('NIM gas relay is only available for supply actions.');
+  if (!marketAllowsSupply()) throw new Error('Aave supply is unavailable or its market data is stale. Refresh and try again.');
+  const amount = amountFromInput($('amount-input').value, 'supply', state.walletData.tokenBalance, state.walletData.aTokenBalance);
+  const quote = await postRelay('quote', { owner: state.wallet, amount: amount.toString() });
+  const permit = await signSupplyPermit(amount);
+  await recheckBeforeWrite();
+  await postRelay('prepare', { quoteId: quote.id, owner: state.wallet, amount: amount.toString(), permit });
+  setDialogPlan({ kind: 'supply', step: 'nimRelay', owner: state.wallet, amount, quote, permit });
+}
+
+async function submitNimRelay(action) {
+  if (action.owner.toLowerCase() !== state.wallet.toLowerCase()) throw new Error('Connected wallet changed. Reconnect and request a new quote.');
+  const luna = Number(BigInt(action.quote.fee));
+  if (!Number.isSafeInteger(luna) || luna < 1 || action.quote.expiresAt <= Date.now()) throw new Error('NIM fee quote is invalid or expired. Request a new quote.');
+  $('dialog-status').textContent = 'Confirm the exact NIM payment in Nimiq Pay. Current has not sent the Polygon supply yet.';
+  const hash = await window.nimiq.sendBasicTransactionWithData({ recipient: action.quote.recipient, value: luna, data: action.quote.memo });
+  if (typeof hash !== 'string' || !/^(?:0x)?[0-9a-f]{64}$/i.test(hash)) throw new Error('Nimiq Pay returned an unexpected transaction ID. Check Nimiq Pay activity before trying again.');
+  action.nimTxHash = hash;
+  action.step = 'relayStatus';
+  try { sessionStorage.setItem(RELAY_PENDING_KEY, JSON.stringify({ owner: action.owner, amount: action.amount.toString(), quote: action.quote, nimTxHash: hash })); } catch { /* Relay status can still be checked in this session. */ }
+  $('dialog-status').textContent = 'NIM payment submitted. Verifying its recipient, fee, and quote memo before relaying the Aave supply…';
+  const result = await postRelay('submit', { quoteId: action.quote.id, nimTxHash: hash });
+  $('dialog-status').textContent = result.status === 'complete'
+    ? 'Supply confirmed on Polygon by the relayer.'
+    : result.status === 'refund_review'
+      ? 'NIM payment was received, but the supply did not complete. Do not pay again. Contact Current support for a manual fee review.'
+      : 'NIM payment verified. Polygon supply is being relayed; check status before retrying.';
+  if (result.polygonTxHash) setTransactionLink(result.polygonTxHash);
+  $('confirm-action').querySelector('span').textContent = result.status === 'complete' || result.status === 'refund_review' ? 'Close' : 'Check relay status';
+  if (result.status === 'refund_review' || result.status === 'payment_reused') $('relay-support-link').hidden = false;
+  if (result.status === 'complete' || result.status === 'refund_review') {
+    try { sessionStorage.removeItem(RELAY_PENDING_KEY); } catch {}
+    state.pendingAction = null;
+  }
+}
+
+async function checkNimRelayStatus(action) {
+  const response = await fetch(`/api/relay/job/${encodeURIComponent(action.quote.id)}`, { cache: 'no-store' });
+  let result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Could not check relay status.');
+  if (result.status === 'nim_pending' && action.nimTxHash) {
+    result = await postRelay('submit', { quoteId: action.quote.id, nimTxHash: action.nimTxHash });
+  }
+  $('dialog-status').textContent = result.status === 'complete'
+    ? 'Supply confirmed on Polygon by the relayer.'
+    : result.status === 'refund_review'
+      ? 'NIM payment was received, but the supply did not complete. Do not pay again. Contact Current support for a manual fee review.'
+      : result.status === 'pending' || result.status === 'submitted' || result.status === 'relaying'
+        ? 'Polygon supply is still pending. Do not send another NIM payment.'
+        : result.status === 'nim_pending'
+          ? 'NIM payment is included but not finalized on Nimiq yet. Check again shortly; do not pay again.'
+        : `Relay status: ${result.status}. Do not repeat a payment.`;
+  if (result.polygonTxHash) setTransactionLink(result.polygonTxHash);
+  if (result.status === 'refund_review' || result.status === 'payment_reused') $('relay-support-link').hidden = false;
+  if (result.status === 'complete' || result.status === 'refund_review') {
+    try { sessionStorage.removeItem(RELAY_PENDING_KEY); } catch {}
+    state.pendingAction = null;
+  }
+}
+
+function restoreRelayStatus() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(RELAY_PENDING_KEY) || 'null');
+    if (!saved || !saved.quote?.id || !/^(?:0x)?[0-9a-f]{64}$/i.test(saved.nimTxHash || '') || !/^\d+$/.test(saved.amount || '')) return;
+    setDialogPlan({ kind: 'supply', step: 'relayStatus', owner: saved.owner, amount: BigInt(saved.amount), quote: saved.quote, nimTxHash: saved.nimTxHash });
+  } catch { /* Ignore corrupt session-only relay metadata. */ }
 }
 
 async function reviewSubmit(event) {
@@ -910,6 +1015,10 @@ async function confirmDialogAction() {
   $('confirm-action').classList.add('is-loading');
   $('confirm-action').setAttribute('aria-busy', 'true');
   try {
+    if (action.step === 'relayStatus') {
+      await checkNimRelayStatus(action);
+      return;
+    }
     if (!state.market || state.gqlBusy || Date.now() - state.market.fetchedAt.getTime() >= 60_000) {
       state.pendingAction = null;
       $('dialog-status').textContent = 'Live Aave market data expired while you reviewed this action. Refresh the market and prepare the transaction again; nothing was sent.';
@@ -919,6 +1028,10 @@ async function confirmDialogAction() {
       return;
     }
     await recheckBeforeWrite();
+    if (action.step === 'nimRelay') {
+      await submitNimRelay(action);
+      return;
+    }
     if (action.step === 'permit' && (!action.owner || action.owner.toLowerCase() !== state.wallet.toLowerCase())) throw new Error('The connected wallet changed after review. Recheck the balance and prepare the supply again.');
     if (action.step === 'approval') {
       state.walletReturnSnapshot = {
@@ -1188,6 +1301,21 @@ function initEvents() {
   $('estimate-principal').addEventListener('input', renderYieldLens);
   $('goal-form').addEventListener('submit', saveSavingsGoal);
   $('goal-clear').addEventListener('click', clearSavingsGoal);
+  $('nim-relay-button').addEventListener('click', async () => {
+    if (state.busy) return;
+    try {
+      setBusy(true);
+      $('nim-relay-button').textContent = 'Preparing NIM relay…';
+      await prepareNimRelay();
+    } catch (error) {
+      $('form-error').textContent = cleanCopy(error.message || 'Could not prepare the NIM gas relay.');
+      $('form-error').hidden = false;
+      showToast(error.message || 'Could not prepare the NIM gas relay.', 'error');
+    } finally {
+      $('nim-relay-button').textContent = 'Supply with NIM-paid gas';
+      setBusy(false);
+    }
+  });
   $('permit-fallback').addEventListener('click', () => {
     if (state.pendingAction?.kind !== 'supply' || state.pendingAction.step !== 'permit') return;
     state.pendingAction.step = 'approval';
@@ -1205,6 +1333,7 @@ function initEvents() {
   $('review-dialog').addEventListener('close', () => { if (state.pendingAction?.kind !== 'reconcile') state.pendingAction = null; });
   $('review-dialog').querySelector('.dialog-close-form button').addEventListener('click', () => showToast('Review closed. Nothing was sent.', 'info'));
   const injected = provider();
+  void loadNimRelayStatus();
   if (injected?.on) {
     injected.on('accountsChanged', (accounts) => {
       state.walletDismissed = false;
@@ -1272,6 +1401,7 @@ async function init() {
     $('position-status').style.color = 'var(--red)';
   }
   await loadMarket();
+  restoreRelayStatus();
   window.setInterval(() => {
     if (document.hidden) return;
     const stale = state.market && Date.now() - state.market.fetchedAt.getTime() >= 60_000;

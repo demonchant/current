@@ -574,3 +574,7 @@ body.is-busy #connect-top::after { content: ""; width: 11px; height: 11px; borde
   .dashboard-page .trust-step:nth-of-type(2) { border-top: 0; }
   .mobile-tabbar button { min-height: 50px; }
 }
+
+.dashboard-page .relay-button { width: 100%; min-height: 44px; margin-top: 9px; border-color: #d8c774; color: #5c5017; background: #fffbee; }
+.dashboard-page .relay-button:disabled { opacity: .5; cursor: not-allowed; }
+.dashboard-page .relay-caption { margin: 7px 0 0; color: #82778b; text-align: center; font-size: 9px; line-height: 1.5; }
