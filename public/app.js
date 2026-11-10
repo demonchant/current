@@ -29,6 +29,7 @@ const FX_CACHE_KEY = 'current.usd-ngn.v1';
 const FX_ENDPOINT = 'https://open.er-api.com/v6/latest/USD';
 const RELAY_PENDING_KEY = 'current.relay.pending.v1';
 let nimRelayEnabled = false;
+let nimRelayStatusUnavailable = false;
 function wasWalletDismissed() { try { return sessionStorage.getItem('current-wallet-dismissed') === 'true'; } catch { return false; } }
 const state = {
   market: null,
@@ -674,11 +675,22 @@ function renderWalletControls() {
   const canWrite = onPolygon && actionAvailable && hasAmount && BigInt(state.walletData?.nativeBalance ?? 0) > 0n && !state.busy;
   $('review-button').disabled = !canWrite;
   const relayButton = $('nim-relay-button');
-  relayButton.hidden = !nimRelayEnabled || state.mode !== 'supply';
+  relayButton.hidden = state.mode !== 'supply';
   $('nim-relay-caption').hidden = relayButton.hidden;
-  relayButton.disabled = !nimRelayEnabled || !onPolygon || state.mode !== 'supply' || !actionAvailable || !hasAmount || state.busy || !window.nimiq?.sendBasicTransactionWithData;
-  if (!relayButton.hidden && !window.nimiq?.sendBasicTransactionWithData) $('nim-relay-caption').textContent = 'Nimiq Pay payment access is unavailable here. Open Current in the Nimiq Pay app to use NIM-paid gas.';
-  else if (!relayButton.hidden) $('nim-relay-caption').textContent = 'Optional relay. Review the exact NIM fee and recipient before paying. A failed relay may need manual fee review.';
+  const relayUnavailableReason = nimRelayStatusUnavailable
+    ? 'NIM-paid gas is unavailable because relay status could not be reached. Try again when the service is available.'
+    : !nimRelayEnabled
+    ? 'NIM-paid gas is unavailable because the relay Worker is not configured.'
+    : !connected ? 'Connect a Polygon wallet before using NIM-paid gas.'
+      : !onPolygon ? 'Switch to Polygon and refresh your wallet before using NIM-paid gas.'
+        : !window.nimiq?.sendBasicTransactionWithData ? 'Nimiq Pay payment access is unavailable here. Open Current in the Nimiq Pay app to use NIM-paid gas.'
+          : !marketFresh ? 'Live Aave market data is unavailable. Refresh it before using NIM-paid gas.'
+            : !actionAvailable ? 'Aave supply is currently unavailable for this market.'
+              : !hasAmount ? 'Enter a valid supply amount to use NIM-paid gas.'
+                : state.busy ? 'Another wallet or market action is in progress.'
+                  : '';
+  relayButton.disabled = Boolean(relayUnavailableReason);
+  if (!relayButton.hidden) $('nim-relay-caption').textContent = relayUnavailableReason || 'Optional relay. Review the exact NIM fee and recipient before paying. A failed relay may need manual fee review.';
   $('connect-top').disabled = state.busy;
   $('disconnect-top').disabled = state.busy;
   if (!connected) $('primary-label').textContent = 'Connect wallet';
@@ -699,7 +711,8 @@ async function loadNimRelayStatus() {
     const response = await fetch('/api/relay/status', { headers: { accept: 'application/json' }, cache: 'no-store' });
     const data = await response.json();
     nimRelayEnabled = response.ok && data.enabled === true;
-  } catch { nimRelayEnabled = false; }
+    nimRelayStatusUnavailable = !response.ok;
+  } catch { nimRelayEnabled = false; nimRelayStatusUnavailable = true; }
   renderWalletControls();
 }
 
