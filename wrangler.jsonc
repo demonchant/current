@@ -3,6 +3,11 @@
   "compatibility_date": "2026-11-04",
   "keep_vars": true,
   "main": "./worker/index.js",
+  "vars": {
+    "NIM_FEE_ADDRESS": "NQ92 YHXJ 3UB1 S3X6 J11T 4KDC R5P5 P9X2 9JN2",
+    "NIM_RELAY_FEE_LUNA": "5000",
+    "RELAY_SUPPORT_URL": "https://current.oladapodamiey.workers.dev/support.html"
+  },
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./public",

@@ -148,13 +148,13 @@ npx wrangler deploy
 
 The NIM relay stays disabled until configured. The app requests `GET /api/relay/status`; the response exposes whether relay configuration is complete, the fee unit, and names of settings that are absent or fail format validation. It never returns configured values or secrets. If the Worker reports incomplete configuration, or the status endpoint cannot be reached, the app keeps the supply action safely disabled and explains the corresponding reason. The button is shown on the Supply tab so the user can see relay availability; it is hidden on Withdraw.
 
-Configure these non-secret Worker variables in the Cloudflare dashboard:
+These non-secret Worker variables are defined in `wrangler.jsonc` and can be changed there:
 
 | Variable | Purpose and expected format |
 | --- | --- |
 | `NIM_FEE_ADDRESS` | Nimiq mainnet address that receives the displayed fee. |
 | `NIM_RELAY_FEE_LUNA` | Positive integer fee in Luna; 100,000 Luna equals 1 NIM. |
-| `RELAY_SUPPORT_URL` | HTTPS support page for payments that need manual review; the deployed support page is `https://current.oladapodamiey.workers.dev/support.html`. |
+| `RELAY_SUPPORT_URL` | HTTPS support page for payments that need manual review. |
 
 Configure these as **Worker secrets**, never as plaintext README values:
 
@@ -166,7 +166,7 @@ Configure these as **Worker secrets**, never as plaintext README values:
 
 The Worker also needs the `RELAY_JOBS` and `PAYMENT_CLAIMS` Durable Object bindings and migrations defined in `wrangler.jsonc`. The relayer account must have enough POL to submit Polygon transactions. Before enabling the relay for users, confirm the support process and fee/refund policy, test in a controlled environment, verify that `/api/relay/status` reports enabled, and validate the full flow inside Nimiq Pay. A Wrangler dry run does not validate runtime secrets or the live wallet flow.
 
-`wrangler.jsonc` sets `keep_vars` to `true` so deploying code with Wrangler preserves non-secret variables configured in the Cloudflare dashboard. Wrangler otherwise replaces dashboard-managed variables with the variables declared in its config; secrets are managed separately and are not removed by code deployments. Keep the dashboard variable settings as the source of truth unless you intentionally move them into Wrangler configuration.
+`wrangler.jsonc` is the source of truth for these three public relay variables. It sets `keep_vars` to `true` so any additional non-secret variables configured in the Cloudflare dashboard are preserved during Wrangler deployments. `NIMIQ_RPC_URL` may be a secret if it contains provider credentials; otherwise it can be configured as a variable, but define it only once. Secrets are managed separately and are not removed by code deployments.
 
 Add secrets through Cloudflare's dashboard or Wrangler's interactive secret command, substituting only the secret name when prompted:
 
