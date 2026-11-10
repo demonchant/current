@@ -25,11 +25,15 @@ import {
 const $ = (id) => document.getElementById(id);
 const cleanCopy = (value) => String(value ?? '').replace(/-/g, ' ');
 const RATE_HISTORY_KEY = 'current.apy-history.v1';
+const FX_CACHE_KEY = 'current.usd-ngn.v1';
+const FX_ENDPOINT = 'https://open.er-api.com/v6/latest/USD';
 function wasWalletDismissed() { try { return sessionStorage.getItem('current-wallet-dismissed') === 'true'; } catch { return false; } }
 const state = {
   market: null,
   wallet: null,
   walletData: null,
+  fx: null,
+  fxError: false,
   walletReturnSnapshot: null,
   walletDismissed: wasWalletDismissed(),
   mode: 'supply',
@@ -38,6 +42,69 @@ const state = {
   busy: false,
   toastTimer: null,
 };
+
+const nairaFormatter = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 });
+
+function formatNaira(rawUsdt) {
+  if (!state.fx || rawUsdt === null || rawUsdt === undefined) return 'Unavailable';
+  const usdValue = Number(BigInt(rawUsdt)) / (10 ** TOKEN_DECIMALS);
+  const nairaValue = usdValue * state.fx.rate;
+  return Number.isFinite(nairaValue) ? nairaFormatter.format(nairaValue) : 'Unavailable';
+}
+
+function readFxCache() {
+  try {
+    const data = JSON.parse(localStorage.getItem(FX_CACHE_KEY) || 'null');
+    if (data && Number.isFinite(data.rate) && data.rate > 0 && Number.isFinite(data.fetchedAt) && Number.isFinite(data.updatedAt)) return data;
+  } catch { /* FX cache is optional and browser-local. */ }
+  return null;
+}
+
+function renderNairaDisplays() {
+  const fx = state.fx;
+  $('fx-rate-value').textContent = fx ? `₦${new Intl.NumberFormat('en-NG', { maximumFractionDigits: 2 }).format(fx.rate)} per $1` : 'Unavailable';
+  if (!fx) {
+    $('fx-rate-note').innerHTML = state.fxError
+      ? 'Naira conversion unavailable. <a href="https://www.exchangerate-api.com" target="_blank" rel="noreferrer">Rates by ExchangeRate-API</a>'
+      : 'Loading indicative naira conversion…';
+  } else {
+    const updated = new Date(fx.updatedAt * 1000);
+    const ageHours = (Date.now() - fx.updatedAt * 1000) / 3_600_000;
+    const freshness = ageHours > 48 ? ' · rate is stale' : '';
+    $('fx-rate-note').innerHTML = `Indicative only · USDT treated as ≈$1 · updated ${updated.toLocaleDateString('en-NG')} UTC${freshness}. <a href="https://www.exchangerate-api.com" target="_blank" rel="noreferrer">Rates by ExchangeRate-API</a>`;
+  }
+  $('position-naira').textContent = state.walletData
+    ? `Approx. ${formatNaira(state.walletData.aTokenBalance)} · indicative USD/NGN conversion`
+    : 'Connect a Polygon wallet to see the indicative naira value of this position.';
+  renderYieldLens();
+  updateAmountSummary();
+  renderSavingsGoal();
+}
+
+async function loadNairaRate() {
+  const cached = readFxCache();
+  if (cached) state.fx = cached;
+  renderNairaDisplays();
+  if (cached && Date.now() - cached.fetchedAt < 24 * 60 * 60 * 1000) return;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(FX_ENDPOINT, { signal: controller.signal, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' });
+    if (!response.ok) throw new Error(`FX service returned HTTP ${response.status}.`);
+    const body = await response.json();
+    const rate = Number(body?.rates?.NGN);
+    const updatedAt = Number(body?.time_last_update_unix);
+    if (body?.result !== 'success' || body?.base_code !== 'USD' || !Number.isFinite(rate) || rate <= 0 || !Number.isFinite(updatedAt)) throw new Error('FX service returned invalid USD/NGN data.');
+    state.fx = { rate, updatedAt, fetchedAt: Date.now() };
+    state.fxError = false;
+    try { localStorage.setItem(FX_CACHE_KEY, JSON.stringify(state.fx)); } catch { /* Use the live rate in memory if storage is unavailable. */ }
+  } catch {
+    state.fxError = true;
+  } finally {
+    clearTimeout(timeout);
+    renderNairaDisplays();
+  }
+}
 
 const MARKET_QUERY = `query { market(request: { address: "${AAVE_V3_POLYGON_POOL}", chainId: ${CHAIN_ID} }) {
   name address chain { name chainId }
@@ -252,7 +319,7 @@ function renderSavingsGoal() {
   $('goal-progress-copy').textContent = `${formatTokenAmount(balance)} of ${formatTokenAmount(target)} USDT · target ${new Date(`${goal.date}T00:00:00`).toLocaleDateString()}`;
   const days = Math.ceil((new Date(`${goal.date}T23:59:59`).getTime() - Date.now()) / 86_400_000);
   if (balance >= target) {
-    $('goal-projection').textContent = 'You have reached this target based on the current Polygon position.';
+    $('goal-projection').textContent = `You have reached this target based on the current Polygon position. Approximate target value: ${formatNaira(target)}.`;
   } else if (days <= 0) {
     $('goal-projection').textContent = 'Target date has passed. Update the date or keep tracking progress.';
   } else if (!marketIsFresh()) {
@@ -261,7 +328,7 @@ function renderSavingsGoal() {
     const apy = state.market.reserve.supplyInfo.apy.formatted;
     const estimate = balance + estimateSimpleYield(balance, apy, Math.min(days, 3650));
     const gap = target > estimate ? target - estimate : 0n;
-    $('goal-projection').textContent = `At today’s ${apy}% APY, the position could be about ${formatTokenAmount(estimate)} USDT by then if the rate stayed unchanged. ${gap ? `Illustrative gap: ${formatTokenAmount(gap)} USDT.` : 'That projection reaches your target.'} Variable rates can change; this is not guaranteed.`;
+    $('goal-projection').textContent = `At today’s ${apy}% APY, the position could be about ${formatTokenAmount(estimate)} USDT (${formatNaira(estimate)}) by then if the rate stayed unchanged. ${gap ? `Illustrative gap: ${formatTokenAmount(gap)} USDT (${formatNaira(gap)}).` : 'That projection reaches your target.'} Variable rates can change; this is not guaranteed.`;
   }
 }
 
@@ -294,6 +361,8 @@ function renderYieldLens() {
   const input = $('estimate-principal');
   if (!marketIsFresh()) {
     input.disabled = true;
+    $('estimate-30-naira').textContent = 'Unavailable';
+    $('estimate-365-naira').textContent = 'Unavailable';
     $('estimate-30').textContent = '—';
     $('estimate-365').textContent = '—';
     $('yield-estimate-status').textContent = state.gqlBusy ? 'Refreshing the live Aave rate…' : 'A live Aave rate is required before estimating.';
@@ -302,6 +371,8 @@ function renderYieldLens() {
   input.disabled = false;
   const amount = input.value.trim();
   if (!amount) {
+    $('estimate-30-naira').textContent = 'Unavailable';
+    $('estimate-365-naira').textContent = 'Unavailable';
     $('estimate-30').textContent = '—';
     $('estimate-365').textContent = '—';
     $('yield-estimate-status').textContent = `Using the current ${state.market.reserve.supplyInfo.apy.formatted}% Aave supply APY when you enter an amount.`;
@@ -310,10 +381,16 @@ function renderYieldLens() {
   try {
     const principal = parseTokenAmount(amount);
     const apy = state.market.reserve.supplyInfo.apy.formatted;
-    $('estimate-30').textContent = `${formatTokenAmount(estimateSimpleYield(principal, apy, 30))} USDT`;
-    $('estimate-365').textContent = `${formatTokenAmount(estimateSimpleYield(principal, apy, 365))} USDT`;
+    state.yield30 = estimateSimpleYield(principal, apy, 30);
+    state.yield365 = estimateSimpleYield(principal, apy, 365);
+    $('estimate-30').textContent = `${formatTokenAmount(state.yield30)} USDT`;
+    $('estimate-365').textContent = `${formatTokenAmount(state.yield365)} USDT`;
+    $('estimate-30-naira').textContent = formatNaira(state.yield30);
+    $('estimate-365-naira').textContent = formatNaira(state.yield365);
     $('yield-estimate-status').textContent = `Illustrative gross estimate at the live ${apy}% APY, fetched with the Aave market data above.`;
   } catch (error) {
+    $('estimate-30-naira').textContent = 'Unavailable';
+    $('estimate-365-naira').textContent = 'Unavailable';
     $('estimate-30').textContent = '—';
     $('estimate-365').textContent = '—';
     $('yield-estimate-status').textContent = cleanCopy(error.message);
@@ -550,6 +627,7 @@ function renderWalletHeader() {
 function renderWalletPosition() {
   if (!state.walletData) {
     $('position-value').textContent = state.wallet ? 'Waiting for Polygon' : 'Connect your wallet';
+    $('position-naira').textContent = 'Connect a Polygon wallet to see the indicative naira value of this position.';
     $('position-value').classList.remove('has-value');
     $('position-principal').textContent = '—';
     $('position-interest').textContent = '—';
@@ -557,6 +635,7 @@ function renderWalletPosition() {
     return;
   }
   $('position-value').textContent = `${formatTokenAmount(state.walletData.aTokenBalance)} USDT`;
+  $('position-naira').textContent = `Approx. ${formatNaira(state.walletData.aTokenBalance)} - indicative USD/NGN conversion`;
   $('position-value').classList.add('has-value');
   if (state.walletData.scaledBalance !== null) {
     const interest = state.walletData.aTokenBalance > state.walletData.scaledBalance
@@ -626,12 +705,14 @@ function updateAmountSummary() {
     try {
       const raw = amountFromInput($('amount-input').value, state.mode, state.walletData.tokenBalance, state.walletData.aTokenBalance);
       $('summary-value').textContent = `${formatTokenAmount(raw)} USDT`;
+      $('summary-naira').textContent = formatNaira(raw);
       $('form-error').hidden = true;
     } catch (error) {
       $('form-error').textContent = cleanCopy(error.message);
       $('form-error').hidden = false;
+      $('summary-naira').textContent = 'Unavailable';
     }
-  } else $('form-error').hidden = true;
+  } else { $('form-error').hidden = true; $('summary-naira').textContent = 'Unavailable'; }
   $('available-label').textContent = state.walletData
     ? `${formatTokenAmount(state.mode === 'supply' ? state.walletData.tokenBalance : state.walletData.aTokenBalance)} USDT ${state.mode === 'supply' ? 'available' : 'supplied'}`
     : 'Balance unavailable';
@@ -1184,6 +1265,7 @@ async function init() {
   initEvents();
   renderWalletControls();
   renderSavingsGoal();
+  void loadNairaRate();
   const pending = savedPending();
   if (pending) {
     $('position-status').textContent = 'A prior transaction needs reconciliation';

@@ -78,6 +78,90 @@ h1 { margin: 0; font-size: clamp(44px, 6vw, 72px); line-height: .99; letter-spac
 
 /* Current visual direction: editorial observatory, violet ink and a custom persimmon signal. */
 .topbar { height: 82px; border-bottom-color: rgba(59, 73, 116, .16); }
+
+/* Nigeria-first Earn polish: warm surfaces and restrained violet, preserving Current's identity. */
+:root {
+  --ink: #17161a;
+  --ink-soft: #514e57;
+  --muted: #77727d;
+  --paper: #f2f0ea;
+  --paper-raised: #faf9f5;
+  --line: #e2dfd8;
+  --violet: #6b4fd8;
+  --plum: #29233c;
+  --coral: #f1c95b;
+  --coral-soft: #f7edcc;
+  --shadow: 0 12px 32px rgba(35, 29, 45, .055);
+}
+html, body { background: var(--paper); color: var(--ink); }
+.topbar { position: sticky; top: 0; z-index: 12; height: 72px; border-bottom: 1px solid var(--line); background: rgba(242, 240, 234, .92); backdrop-filter: blur(16px); }
+.brand-mark { border-radius: 9px; background: var(--violet); }
+.brand-dot { color: var(--violet); }
+.wallet-pill { border-color: var(--line); color: var(--ink); background: var(--paper-raised); }
+.wallet-pill:hover { border-color: #c8c0e8; background: #fff; }
+.page-shell { max-width: 1120px; }
+.intro { gap: clamp(32px, 6vw, 82px); padding-top: 56px; padding-bottom: 45px; }
+.eyebrow, .card-overline { color: #77717f; }
+.intro h1 { font-size: clamp(43px, 5.5vw, 66px); letter-spacing: -3.8px; }
+.intro h1 em { color: var(--violet); }
+.intro-lede { color: var(--ink-soft); }
+.rate-card { min-height: 208px; border-color: #e2dff0; border-radius: 22px; color: var(--ink); background: #e9e4f5; box-shadow: none; }
+.rate-card::after { border-color: rgba(107, 79, 216, .1); box-shadow: 0 0 0 26px rgba(107, 79, 216, .025), 0 0 0 53px rgba(107, 79, 216, .018); }
+.rate-card .card-overline { color: #655b77; }
+.rate-subline { color: #655d70; }
+.live-badge { border-color: #d6cee9; color: #4d3d82; background: rgba(255,255,255,.48); }
+.live-dot { background: #5caa78; }
+.rate-value { color: var(--violet); }
+.rate-value.is-loading { color: #645b72; }
+.rate-value.is-error { color: #8a4050; }
+.rate-card-foot { color: #645d6e; }
+.icon-button { border-color: #d6cee9; color: #55487e; background: rgba(255,255,255,.48); }
+.rate-meter { background: rgba(107,79,216,.15); }
+.meter-fill { background: var(--violet); }
+.position-card, .goal-card, .action-card, .yield-lens, .trust-strip, .risk-panel { border: 1px solid var(--line); border-radius: 22px; background: var(--paper-raised); box-shadow: none; }
+.position-card, .goal-card, .action-card, .yield-lens { padding: 25px; }
+.position-total { color: var(--ink); }
+.position-total.has-value { color: var(--plum); }
+.position-naira, .fx-note, .yield-naira-results { color: #716c77; font-size: 11px; line-height: 1.55; }
+.market-facts { color: var(--ink); }
+.fact-row { border-bottom-color: var(--line); }
+.fact-label, .freshness { color: var(--muted); }
+.fact-value { color: var(--ink); }
+.goal-card { border-color: #e5d9a9; background: #fbf8ee; }
+.goal-mark, .yield-mark { color: var(--violet); }
+.goal-progress-track { background: #e6e1ef; }
+.goal-progress-track span { background: linear-gradient(90deg, var(--violet), #b4a5ed); }
+.goal-save { color: white !important; background: var(--violet) !important; }
+.goal-clear { color: var(--ink-soft) !important; background: #ece9e3 !important; }
+.mode-switch { background: #f0eee8; }
+.mode-button { color: #706b75; }
+.mode-button.is-active { color: var(--ink); background: white; box-shadow: 0 2px 8px rgba(35,29,45,.08); }
+.amount-entry, .yield-amount-entry, .goal-input-wrap, .goal-date { border-color: var(--line); background: #fff; }
+.primary-button { color: white; background: var(--violet); }
+.primary-button:hover:not(:disabled) { background: #573cc1; }
+.primary-button:disabled { color: #807b86; background: #dedbe2; }
+.trust-strip { background: #f7f5ef; }
+.trust-step { border-left-color: var(--line); }
+.trust-step strong { color: var(--ink); }
+.risk-panel { background: #fbf8ee; }
+.mobile-tabbar { border-top-color: var(--line); background: rgba(250,249,245,.96); }
+.mobile-tabbar button { color: #77727d; }
+.mobile-tabbar button[aria-current="page"], .mobile-tabbar button.is-active { color: var(--violet); }
+.toast { border-color: var(--line); color: var(--ink); background: var(--paper-raised); }
+.yield-naira-results { display: flex; justify-content: space-between; gap: 16px; margin-top: 9px; }
+.yield-naira-results strong { color: var(--plum); }
+.fx-note { margin: 10px 0 0; }
+.fx-note a { color: inherit; text-underline-offset: 2px; }
+@media (max-width: 700px) {
+  .topbar { height: 62px; padding-inline: 15px; }
+  .page-shell { padding-bottom: 92px; }
+  .intro { gap: 20px; padding-top: 30px; padding-bottom: 20px; }
+  .intro h1 { letter-spacing: -3px; }
+  .rate-card { min-height: 184px; padding: 21px; border-radius: 20px; }
+  .position-card, .goal-card, .action-card, .yield-lens { padding: 19px 17px; border-radius: 20px; }
+  .yield-naira-results { flex-direction: column; gap: 5px; }
+  .mobile-tabbar { box-shadow: 0 -6px 24px rgba(35,29,45,.06); }
+}
 .brand-mark { border-radius: 8px 8px 12px 8px; transform: rotate(-11deg); }
 .brand-mark span { width: 3px; }
 .brand-dot { color: #fdc921; }

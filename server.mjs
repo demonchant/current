@@ -30,7 +30,7 @@ http.createServer((req, res) => {
     'content-type': types[path.extname(target)] || 'application/octet-stream',
     'x-content-type-options': 'nosniff',
     'referrer-policy': 'no-referrer',
-    'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://api.v3.aave.com https://polygon-rpc.com https://polygon-bor-rpc.publicnode.com; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'",
+    'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://api.v3.aave.com https://open.er-api.com https://polygon-rpc.com https://polygon-bor-rpc.publicnode.com; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'",
     'cache-control': pathname === '/' || route === '/dashboard.html' ? 'no-cache' : 'public, max-age=300',
   });
   createReadStream(target).pipe(res);

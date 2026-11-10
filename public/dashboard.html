@@ -57,6 +57,7 @@
             <span id="market-data-note">Live Aave market data</span>
             <button class="icon-button" id="refresh-market" type="button" aria-label="Refresh live Aave market data" title="Refresh market data">↻</button>
           </div>
+          <p class="fx-note" id="fx-rate-note">Indicative naira conversion unavailable.</p>
           <p class="market-error" id="market-error" role="status" hidden></p>
         </article>
       </section>
@@ -72,6 +73,7 @@
               <span class="network-chip"><span class="polygon-glyph" aria-hidden="true">◉</span> Polygon</span>
             </div>
             <div class="position-total" id="position-value" aria-live="polite">Connect your wallet</div>
+            <p class="position-naira" id="position-naira">Naira value appears when the live FX rate is available.</p>
             <div class="position-breakdown" aria-live="polite">
               <div><span>Scaled principal basis</span><strong id="position-principal">—</strong></div>
               <div><span>Accrued interest · est.</span><strong id="position-interest">—</strong></div>
@@ -114,6 +116,10 @@
               <span class="fact-label">Your POL for gas</span>
               <span class="fact-value" id="gas-balance">Connect wallet to check</span>
             </div>
+            <div class="fact-row">
+              <span class="fact-label">Indicative USD/NGN</span>
+              <span class="fact-value" id="fx-rate-value">Unavailable</span>
+            </div>
             <p class="freshness" id="freshness">Aave market data has not been checked yet.</p>
           </div>
 
@@ -141,6 +147,7 @@
               <div><span>After 30 days</span><strong id="estimate-30">—</strong></div>
               <div><span>After 1 year</span><strong id="estimate-365">—</strong></div>
             </div>
+            <div class="yield-naira-results"><span>NGN equivalent: <strong id="estimate-30-naira">Unavailable</strong></span><span>NGN equivalent: <strong id="estimate-365-naira">Unavailable</strong></span></div>
             <p class="yield-estimate-status" id="yield-estimate-status" role="status">Waiting for live Aave rate data.</p>
             <p class="yield-estimate-caveat" id="yield-estimate-caveat">Simple interest estimate using today’s rate as if it stayed unchanged. Gross of POL network fees. Actual variable yield can be lower or higher and is not guaranteed.</p>
           </section>
@@ -172,6 +179,7 @@
 
             <div class="action-summary">
               <div class="summary-row"><span id="summary-label">You supply</span><strong id="summary-value">Enter an amount</strong></div>
+              <div class="summary-row"><span>Approximate naira value</span><strong id="summary-naira">Unavailable</strong></div>
               <div class="summary-row"><span>Wallet authorization</span><strong id="approval-summary">Shown before signing</strong></div>
               <div class="summary-row"><span>Network fee</span><strong>POL · paid by your wallet</strong></div>
             </div>
