@@ -84,6 +84,19 @@
             <p class="position-refreshed" id="position-refreshed">Position not refreshed</p>
           </article>
 
+          <section class="goal-card" id="savings-goal" aria-labelledby="goal-title">
+            <div class="goal-heading"><div><p class="card-overline">A REASON TO RETURN</p><h2 id="goal-title">Your savings goal</h2></div><span class="goal-mark" aria-hidden="true">↗</span></div>
+            <p class="goal-intro">Set a USDT target and date. Track your actual aUSDT position over time. Your goal stays on this device.</p>
+            <form id="goal-form" novalidate>
+              <label class="goal-label" for="goal-target">Target amount <span>USDT</span></label>
+              <div class="goal-input-wrap"><input id="goal-target" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 100" aria-describedby="goal-status" /><span>USDT</span></div>
+              <label class="goal-label" for="goal-date">Target date</label><input class="goal-date" id="goal-date" type="date" aria-describedby="goal-status" />
+              <div class="goal-buttons"><button class="goal-save" type="submit" id="goal-save">Save goal</button><button class="goal-clear" type="button" id="goal-clear" hidden>Clear</button></div>
+            </form>
+            <div class="goal-progress-wrap" id="goal-progress-wrap" hidden><div class="goal-progress-label"><span id="goal-progress-copy">Connect your wallet to track progress.</span><strong id="goal-progress-percent">0%</strong></div><div class="goal-progress-track" id="goal-progress-track" role="progressbar" aria-label="Savings goal progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="goal-progress-fill"></span></div><p class="goal-projection" id="goal-projection" role="status"></p></div>
+            <p class="goal-status" id="goal-status" role="status" aria-live="polite">Connect a wallet to create a private, device-saved goal.</p>
+          </section>
+
           <div class="market-facts" aria-label="Market details">
             <div class="fact-row">
               <span class="fact-label">Protocol</span>
@@ -159,7 +172,7 @@
 
             <div class="action-summary">
               <div class="summary-row"><span id="summary-label">You supply</span><strong id="summary-value">Enter an amount</strong></div>
-              <div class="summary-row"><span>Wallet approval</span><strong id="approval-summary">Shown before signing</strong></div>
+              <div class="summary-row"><span>Wallet authorization</span><strong id="approval-summary">Shown before signing</strong></div>
               <div class="summary-row"><span>Network fee</span><strong>POL · paid by your wallet</strong></div>
             </div>
             <button class="primary-button" id="review-button" type="submit" disabled>
@@ -176,7 +189,7 @@
           <h2 id="trust-title">Your wallet.<br />Your call.</h2>
         </div>
         <div class="trust-step"><span class="step-number">01</span><h3>See what’s live</h3><p>Rate and reserve status come from Aave. Rates change with the market.</p></div>
-        <div class="trust-step"><span class="step-number">02</span><h3>Review each action</h3><p>Exact amount and approval are shown before Nimiq Pay asks you to sign.</p></div>
+        <div class="trust-step"><span class="step-number">02</span><h3>Review each action</h3><p>See the exact amount and permit or approval before the wallet requests authorization.</p></div>
         <div class="trust-step"><span class="step-number">03</span><h3>Verify the result</h3><p>We check the Polygon receipt and your Aave position before showing completion.</p></div>
       </section>
 
@@ -230,6 +243,7 @@
       <a class="transaction-link" id="transaction-link" href="#" target="_blank" rel="noreferrer" hidden>View transaction on PolygonScan ↗</a>
       <div class="dialog-actions">
         <button class="secondary-button" id="cancel-review" type="button">Cancel</button>
+        <button class="secondary-button" id="permit-fallback" type="button" hidden>Use standard approval instead</button>
         <button class="primary-button dialog-primary" id="confirm-action" type="button"><span>Continue to wallet</span><span aria-hidden="true">↗</span></button>
       </div>
     </dialog>

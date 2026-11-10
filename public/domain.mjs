@@ -38,6 +38,28 @@ export function encodeAllowance(owner, spender) {
   return `0xdd62ed3e${owner.slice(2).toLowerCase().padStart(64, '0')}${spender.slice(2).toLowerCase().padStart(64, '0')}`;
 }
 
+export function encodePermitNonce(owner) {
+  if (!isAddress(owner)) throw new Error('Wallet address is invalid.');
+  return `0x7ecebe00${owner.slice(2).toLowerCase().padStart(64, '0')}`;
+}
+
+export function validateSupplyWithPermitTransaction(tx, from, amountRaw, deadline) {
+  if (!txBaseIsValid(tx, from) || tx.to.toLowerCase() !== AAVE_V3_POLYGON_POOL.toLowerCase() ||
+      tx.data.length !== 10 + 8 * 64 || tx.data.slice(0, 10).toLowerCase() !== '0x02c205f0' ||
+      addressWord(tx.data, 0) !== USDT_ADDRESS.toLowerCase() ||
+      BigInt(`0x${word(tx.data, 1)}`) !== BigInt(amountRaw) ||
+      addressWord(tx.data, 2) !== from.toLowerCase() ||
+      BigInt(`0x${word(tx.data, 3)}`) !== 0n ||
+      BigInt(`0x${word(tx.data, 4)}`) !== BigInt(deadline) ||
+      BigInt(`0x${word(tx.data, 5)}`) !== 27n && BigInt(`0x${word(tx.data, 5)}`) !== 28n ||
+      BigInt(`0x${word(tx.data, 6)}`) === 0n || BigInt(`0x${word(tx.data, 7)}`) === 0n ||
+      BigInt(deadline) <= BigInt(Math.floor(Date.now() / 1000)) ||
+      BigInt(deadline) > BigInt(Math.floor(Date.now() / 1000) + 1300)) {
+    throw new Error('The Aave permit supply did not match your wallet, Polygon USDT, exact amount, short deadline and verified pool. Nothing was sent.');
+  }
+  return true;
+}
+
 function txBaseIsValid(tx, from) {
   return tx && isAddress(tx.to) && isAddress(tx.from) &&
     tx.from.toLowerCase() === from.toLowerCase() &&

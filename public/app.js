@@ -9,6 +9,7 @@ import {
   amountFromInput,
   encodeAllowance,
   encodeBalanceOf,
+  encodePermitNonce,
   estimateSimpleYield,
   expectedBalanceDelta,
   formatTokenAmount,
@@ -17,6 +18,7 @@ import {
   prepareExactApprovalTransaction,
   validateApprovalTransaction,
   validateSupplyTransaction,
+  validateSupplyWithPermitTransaction,
   validateWithdrawTransaction,
 } from './domain.mjs';
 
@@ -194,6 +196,100 @@ function renderRateHistory(currentRate) {
     : `${firstSeen.toLocaleDateString()} – ${new Date(history.at(-1).t).toLocaleDateString()} · ${history.length} observations`;
 }
 
+function goalStorageKey() {
+  return state.wallet ? `current.savings-goal.v1:${state.wallet.toLowerCase()}` : null;
+}
+
+function readSavingsGoal() {
+  const key = goalStorageKey();
+  if (!key) return null;
+  try {
+    const goal = JSON.parse(localStorage.getItem(key) || 'null');
+    if (goal && /^\d+$/.test(String(goal.targetRaw)) && /^\d{4}-\d{2}-\d{2}$/.test(goal.date) && BigInt(goal.targetRaw) > 0n && BigInt(goal.targetRaw) < 2n ** 256n) return goal;
+  } catch { /* Goal storage is optional and stays on this device. */ }
+  return null;
+}
+
+function renderSavingsGoal() {
+  const targetInput = $('goal-target');
+  if (!targetInput) return;
+  const goal = readSavingsGoal();
+  const connected = Boolean(state.wallet && state.walletData);
+  targetInput.disabled = !state.wallet;
+  $('goal-date').disabled = !state.wallet;
+  $('goal-save').disabled = !state.wallet;
+  $('goal-clear').hidden = !goal;
+  $('goal-progress-wrap').hidden = !goal;
+  if (goal) {
+    targetInput.value = formatTokenAmount(BigInt(goal.targetRaw));
+    $('goal-date').value = goal.date;
+  } else if (!state.wallet) {
+    targetInput.value = '';
+    $('goal-date').value = '';
+  }
+  if (!goal) {
+    $('goal-status').textContent = state.wallet ? 'Choose a target and date. This goal is saved only in this browser for this wallet.' : 'Connect a wallet to create a private, device-saved goal.';
+    $('goal-progress-copy').textContent = connected ? 'Save a goal to start tracking this position.' : 'Connect your wallet to track progress.';
+    $('goal-projection').textContent = '';
+    return;
+  }
+  $('goal-status').textContent = connected ? 'Progress uses the live aUSDT balance read from Polygon.' : 'Goal saved on this device. Connect this wallet on Polygon to refresh progress.';
+  if (!connected) {
+    $('goal-progress-copy').textContent = 'Connect this wallet on Polygon to refresh progress.';
+    $('goal-progress-percent').textContent = '—';
+    $('goal-progress-track').setAttribute('aria-valuenow', '0');
+    $('goal-progress-fill').style.width = '0%';
+    $('goal-projection').textContent = 'Your goal stays saved for this wallet on this device.';
+    return;
+  }
+  const target = BigInt(goal.targetRaw);
+  const balance = state.walletData.aTokenBalance;
+  const pct = Number(balance * 10_000n / target) / 100;
+  const shownPct = Math.min(100, pct);
+  $('goal-progress-percent').textContent = `${shownPct.toFixed(shownPct % 1 ? 1 : 0)}%`;
+  $('goal-progress-track').setAttribute('aria-valuenow', String(Math.round(shownPct)));
+  $('goal-progress-fill').style.width = `${shownPct}%`;
+  $('goal-progress-copy').textContent = `${formatTokenAmount(balance)} of ${formatTokenAmount(target)} USDT · target ${new Date(`${goal.date}T00:00:00`).toLocaleDateString()}`;
+  const days = Math.ceil((new Date(`${goal.date}T23:59:59`).getTime() - Date.now()) / 86_400_000);
+  if (balance >= target) {
+    $('goal-projection').textContent = 'You have reached this target based on the current Polygon position.';
+  } else if (days <= 0) {
+    $('goal-projection').textContent = 'Target date has passed. Update the date or keep tracking progress.';
+  } else if (!marketIsFresh()) {
+    $('goal-projection').textContent = 'Refresh the live Aave rate to see an illustrative estimate by your target date.';
+  } else {
+    const apy = state.market.reserve.supplyInfo.apy.formatted;
+    const estimate = balance + estimateSimpleYield(balance, apy, Math.min(days, 3650));
+    const gap = target > estimate ? target - estimate : 0n;
+    $('goal-projection').textContent = `At today’s ${apy}% APY, the position could be about ${formatTokenAmount(estimate)} USDT by then if the rate stayed unchanged. ${gap ? `Illustrative gap: ${formatTokenAmount(gap)} USDT.` : 'That projection reaches your target.'} Variable rates can change; this is not guaranteed.`;
+  }
+}
+
+function saveSavingsGoal(event) {
+  event.preventDefault();
+  const key = goalStorageKey();
+  if (!key) { $('goal-status').textContent = 'Connect a wallet before saving a goal.'; return; }
+  try {
+    const targetRaw = parseTokenAmount($('goal-target').value);
+    const date = $('goal-date').value;
+    const dateTime = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T23:59:59`).getTime() : NaN;
+    if (!Number.isFinite(dateTime)) throw new Error('Choose a valid target date.');
+    if (dateTime <= Date.now()) throw new Error('Choose a future target date.');
+    localStorage.setItem(key, JSON.stringify({ targetRaw: targetRaw.toString(), date }));
+    renderSavingsGoal();
+    $('goal-status').textContent = 'Goal saved on this device for this wallet.';
+  } catch (error) { $('goal-status').textContent = cleanCopy(error.message || 'Could not save this goal on this device.'); }
+}
+
+function clearSavingsGoal() {
+  const key = goalStorageKey();
+  if (!key) return;
+  try { localStorage.removeItem(key); } catch { $('goal-status').textContent = 'This browser could not clear the saved goal.'; return; }
+  $('goal-target').value = '';
+  $('goal-date').value = '';
+  renderSavingsGoal();
+}
+
 function renderYieldLens() {
   const input = $('estimate-principal');
   if (!marketIsFresh()) {
@@ -264,6 +360,7 @@ async function connectWallet() {
     state.wallet = accounts[0];
     const chain = await injected.request({ method: 'eth_chainId' });
     renderWalletHeader();
+    renderSavingsGoal();
     if (Number.parseInt(chain, 16) !== CHAIN_ID) {
       state.walletData = null;
       setWalletMessage('Switch to Polygon to read this position.');
@@ -315,6 +412,81 @@ async function ethCall(to, data) {
   return BigInt(result);
 }
 
+async function readTokenNameForPermit() {
+  const raw = await provider().request({ method: 'eth_call', params: [{ to: USDT_ADDRESS, data: '0x06fdde03' }, 'latest'] });
+  if (typeof raw !== 'string' || !/^0x[0-9a-fA-F]+$/.test(raw) || raw.length < 130) throw new Error('USDT returned an invalid permit name. No transaction was sent.');
+  const data = raw.slice(2);
+  const offset = Number(BigInt(`0x${data.slice(0, 64)}`));
+  if (!Number.isSafeInteger(offset) || offset < 32 || offset * 2 + 64 > data.length) throw new Error('USDT permit name data was malformed. No transaction was sent.');
+  const start = offset * 2;
+  const length = Number(BigInt(`0x${data.slice(start, start + 64)}`));
+  const hex = data.slice(start + 64, start + 64 + length * 2);
+  if (!Number.isSafeInteger(length) || length < 1 || hex.length !== length * 2) throw new Error('USDT permit name data was incomplete. No transaction was sent.');
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(hex.match(/.{2}/g), (byte) => Number.parseInt(byte, 16))); }
+  catch { throw new Error('USDT permit name was not valid UTF-8. No transaction was sent.'); }
+}
+
+async function signSupplyPermit(amount) {
+  const injected = provider();
+  const deadline = Math.floor(Date.now() / 1000) + 1200;
+  const [name, nonce] = await Promise.all([
+    readTokenNameForPermit(),
+    ethCall(USDT_ADDRESS, encodePermitNonce(state.wallet)),
+  ]);
+  const typedData = {
+    types: {
+      EIP712Domain: [
+        { name: 'name', type: 'string' },
+        { name: 'version', type: 'string' },
+        { name: 'verifyingContract', type: 'address' },
+        { name: 'salt', type: 'bytes32' },
+      ],
+      Permit: [
+        { name: 'owner', type: 'address' },
+        { name: 'spender', type: 'address' },
+        { name: 'value', type: 'uint256' },
+        { name: 'nonce', type: 'uint256' },
+        { name: 'deadline', type: 'uint256' },
+      ],
+    },
+    primaryType: 'Permit',
+    domain: {
+      name,
+      version: '1',
+      verifyingContract: USDT_ADDRESS,
+      salt: `0x${CHAIN_ID.toString(16).padStart(64, '0')}`,
+    },
+    message: {
+      owner: state.wallet,
+      spender: AAVE_V3_POLYGON_POOL,
+      value: amount.toString(),
+      nonce: nonce.toString(),
+      deadline: String(deadline),
+    },
+  };
+  const signature = await injected.request({ method: 'eth_signTypedData_v4', params: [state.wallet, JSON.stringify(typedData)] });
+  if (typeof signature !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(signature)) throw new Error('The wallet did not return a valid EIP-2612 permit signature. Nothing was sent.');
+  let v = Number.parseInt(signature.slice(-2), 16);
+  if (v === 0 || v === 1) v += 27;
+  if (v !== 27 && v !== 28) throw new Error('The wallet returned an unsupported permit signature. Nothing was sent.');
+  const r = signature.slice(2, 66).toLowerCase();
+  const s = signature.slice(66, 130).toLowerCase();
+  if (/^0+$/.test(r) || /^0+$/.test(s)) throw new Error('The wallet returned an invalid permit signature. Nothing was sent.');
+  return { deadline, nonce, v, r: `0x${r}`, s: `0x${s}` };
+}
+
+function makeSupplyWithPermitTransaction(amount, permit) {
+  const addressWord = (address) => address.slice(2).toLowerCase().padStart(64, '0');
+  const uintWord = (value) => BigInt(value).toString(16).padStart(64, '0');
+  return {
+    from: state.wallet,
+    to: AAVE_V3_POLYGON_POOL,
+    chainId: CHAIN_ID,
+    value: '0x0',
+    data: `0x02c205f0${addressWord(USDT_ADDRESS)}${uintWord(amount)}${addressWord(state.wallet)}${uintWord(0)}${uintWord(permit.deadline)}${uintWord(permit.v)}${permit.r.slice(2)}${permit.s.slice(2)}`,
+  };
+}
+
 async function refreshWallet() {
   const injected = provider();
   if (!injected || !state.wallet) return;
@@ -353,6 +525,7 @@ async function refreshWallet() {
   state.walletData = { tokenBalance, aTokenBalance, allowance, nativeBalance, scaledBalance, fetchedAt: new Date() };
   renderWalletHeader();
   renderWalletPosition();
+  renderSavingsGoal();
   $('gas-balance').textContent = `${formatTokenAmount(nativeBalance, 18, 5)} POL`;
   $('available-label').textContent = state.mode === 'supply' ? `${formatTokenAmount(tokenBalance)} USDT available` : `${formatTokenAmount(aTokenBalance)} USDT supplied`;
   setWalletMessage('Position read directly from Polygon');
@@ -430,7 +603,7 @@ function renderWalletControls() {
     ? 'Open this Mini App in Nimiq Pay to connect a wallet.'
     : !state.walletData ? 'Switch to Polygon before reading your position.'
       : BigInt(state.walletData.nativeBalance) === 0n ? 'Add POL to your Polygon wallet before a transaction.'
-        : 'Your wallet will show each transaction for approval.';
+        : state.mode === 'supply' ? 'Supply: exact permit signature, then one POL-fee transaction. Standard approval is available as a fallback.' : 'Your wallet will show the withdrawal transaction for approval.';
   updateAmountSummary();
 }
 
@@ -447,7 +620,7 @@ function updateAmountSummary() {
   $('amount-label').textContent = label;
   $('summary-label').textContent = state.mode === 'supply' ? 'You supply' : 'You withdraw';
   $('summary-value').textContent = 'Enter an amount';
-  $('approval-summary').textContent = state.mode === 'supply' ? 'Shown before signing' : 'Not required';
+  $('approval-summary').textContent = state.mode === 'supply' ? 'Exact authorization + 1 supply transaction' : 'Not required';
   $('amount-input').placeholder = state.mode === 'supply' ? '0.00' : '0.00';
   if (state.walletData && $('amount-input').value.trim()) {
     try {
@@ -518,8 +691,19 @@ function makeWithdrawQuery(amount) {
   } }`;
 }
 
+async function walletCanUseEoaPermit() {
+  try {
+    const code = await provider().request({ method: 'eth_getCode', params: [state.wallet, 'latest'] });
+    return typeof code === 'string' && /^0x(?:0{2})*$/i.test(code);
+  } catch { return false; }
+}
+
 async function prepareAction(amount) {
+  const supplyOwner = state.mode === 'supply' ? state.wallet : null;
   const response = await gql(state.mode === 'supply' ? makeSupplyQuery(amount) : makeWithdrawQuery(amount));
+  if (supplyOwner && (!state.wallet || state.mode !== 'supply' || state.wallet.toLowerCase() !== supplyOwner.toLowerCase())) {
+    throw new Error('The connected wallet changed while the supply was being prepared. Refresh the balance and review again.');
+  }
   const plan = response[state.mode];
   if (!plan) throw new Error('Aave did not return a transaction plan. Nothing was sent.');
   if (plan.__typename === 'InsufficientBalanceError') throw new Error(`Aave reports insufficient balance. Available: ${plan.available?.value ?? 'unavailable'} USDT.`);
@@ -528,7 +712,8 @@ async function prepareAction(amount) {
       validateSupplyTransaction(plan.originalTransaction, state.wallet, amount);
       const exactApproval = prepareExactApprovalTransaction(plan.approval, state.wallet, amount, state.walletData.allowance);
       validateApprovalTransaction(exactApproval, state.wallet, amount);
-      return { kind: 'supply', amount, plan: { ...plan, approval: exactApproval }, step: 'approval' };
+      const step = await walletCanUseEoaPermit() ? 'permit' : 'approval';
+      return { kind: 'supply', amount, owner: state.wallet, plan: { ...plan, approval: exactApproval }, step };
     }
     if (plan.__typename === 'TransactionRequest') {
       validateSupplyTransaction(plan, state.wallet, amount);
@@ -544,19 +729,23 @@ async function prepareAction(amount) {
 function setDialogPlan(action) {
   state.pendingAction = action;
   const needsApproval = action.kind === 'supply' && action.step === 'approval';
+  const usesPermit = action.kind === 'supply' && action.step === 'permit';
   $('dialog-action').textContent = needsApproval ? 'Approve exact spend' : action.kind === 'supply' ? 'Supply to Aave' : 'Withdraw from Aave';
   $('dialog-amount').textContent = `${formatTokenAmount(action.amount)} USDT`;
   $('transaction-target').textContent = needsApproval
     ? `USDT token · ${USDT_ADDRESS}`
     : `Aave V3 pool · ${AAVE_V3_POLYGON_POOL}`;
-  $('approval-detail-row').hidden = !needsApproval;
-  $('approval-detail').textContent = `${formatTokenAmount(action.amount)} USDT · one-time exact amount`;
+  $('approval-detail-row').hidden = !(needsApproval || usesPermit);
+  $('approval-detail-row').querySelector('dt').textContent = usesPermit ? 'Permit' : 'Allowance';
+  $('approval-detail').textContent = `${formatTokenAmount(action.amount)} USDT · exact amount${usesPermit ? ' · expires in 20 minutes' : ' · one-time approval'}`;
   $('dialog-status').textContent = needsApproval
     ? 'Aave requests a one-time approval limited to this exact amount. The supply requires a separate confirmation afterward.'
+    : usesPermit ? 'Sign a short-lived typed permit for this exact amount to Aave, then confirm one Polygon supply transaction. The permit does not move funds; the supply transaction needs POL for gas.'
     : action.kind === 'supply' ? 'The next wallet prompt will supply this exact amount to the verified Aave V3 Polygon pool.' : 'The next wallet prompt will withdraw this exact amount to your connected wallet.';
+  $('permit-fallback').hidden = !usesPermit;
   $('dialog-status').classList.remove('is-error');
   $('confirm-action').disabled = false;
-  $('confirm-action').querySelector('span').textContent = needsApproval ? 'Approve in wallet' : 'Continue to wallet';
+  $('confirm-action').querySelector('span').textContent = needsApproval ? 'Approve in wallet' : usesPermit ? 'Sign permit and continue' : 'Continue to wallet';
   $('transaction-link').hidden = true;
   if (!$('review-dialog').open) $('review-dialog').showModal();
 }
@@ -601,6 +790,7 @@ async function sendValidated(transaction, kind, amount) {
   await recheckBeforeWrite();
   if (kind === 'approval') validateApprovalTransaction(transaction, state.wallet, amount);
   if (kind === 'supply') validateSupplyTransaction(transaction, state.wallet, amount);
+  if (kind === 'supplyPermit') validateSupplyWithPermitTransaction(transaction, state.wallet, amount, transaction.permitDeadline);
   if (kind === 'withdraw') validateWithdrawTransaction(transaction, state.wallet, amount);
   const payload = { from: transaction.from, to: transaction.to, data: transaction.data, value: transaction.value || '0x0' };
   const txHash = await injected.request({ method: 'eth_sendTransaction', params: [payload] });
@@ -648,6 +838,7 @@ async function confirmDialogAction() {
       return;
     }
     await recheckBeforeWrite();
+    if (action.step === 'permit' && (!action.owner || action.owner.toLowerCase() !== state.wallet.toLowerCase())) throw new Error('The connected wallet changed after review. Recheck the balance and prepare the supply again.');
     if (action.step === 'approval') {
       state.walletReturnSnapshot = {
         wallet: state.wallet,
@@ -706,8 +897,23 @@ async function confirmDialogAction() {
       tokenBalance: state.walletData.tokenBalance,
       aTokenBalance: before,
     };
-    const transaction = action.step === 'supply' ? action.plan.originalTransaction || action.plan : action.plan;
-    const hash = await sendValidated(transaction, mode, action.amount);
+    let transaction;
+    let transactionKind = mode;
+    if (action.step === 'permit') {
+      $('dialog-status').textContent = 'Requesting a short-lived signature for the exact USDT amount and Aave pool…';
+      const permit = await signSupplyPermit(action.amount);
+      await recheckBeforeWrite();
+      if (action.owner.toLowerCase() !== state.wallet.toLowerCase()) throw new Error('The connected wallet changed while the permit was signed. Nothing was sent; review the new wallet before continuing.');
+      if (await ethCall(USDT_ADDRESS, encodePermitNonce(state.wallet)) !== permit.nonce) throw new Error('The USDT permit nonce changed while you reviewed it. Reopen the action to sign a fresh permit; nothing was sent.');
+      if (await ethCall(USDT_ADDRESS, encodeBalanceOf(state.wallet)) < action.amount) throw new Error('Your Polygon USDT balance changed below the requested amount. Refresh the wallet balance and review again; nothing was sent.');
+      transaction = makeSupplyWithPermitTransaction(action.amount, permit);
+      transaction.permitDeadline = permit.deadline;
+      validateSupplyWithPermitTransaction(transaction, state.wallet, action.amount, permit.deadline);
+      transactionKind = 'supplyPermit';
+    } else {
+      transaction = action.step === 'supply' ? action.plan.originalTransaction || action.plan : action.plan;
+    }
+    const hash = await sendValidated(transaction, transactionKind, action.amount);
     const pending = { hash, mode, from: state.wallet, amount: action.amount.toString(), before: before.toString() };
     state.pendingAction = { kind: 'reconcile', pending };
     savePending(pending);
@@ -741,7 +947,10 @@ async function confirmDialogAction() {
       $('confirm-action').disabled = false;
     }
   } catch (error) {
-    $('dialog-status').textContent = cleanCopy(isUserRejected(error) ? 'Wallet request declined. No success was recorded.' : (error.message || 'Transaction failed. No success was recorded.'));
+    const typedDataUnavailable = state.pendingAction?.step === 'permit' && (error?.code === -32601 || error?.code === -32004 || /method (not found|not available)|not supported|unsupported method/i.test(error?.message || ''));
+    $('dialog-status').textContent = cleanCopy(typedDataUnavailable
+      ? 'This wallet cannot sign the typed permit. Use “standard approval instead” to continue with an exact approval and a separate supply transaction.'
+      : isUserRejected(error) ? 'Wallet request declined. No success was recorded.' : (error.message || 'Transaction failed. No success was recorded.'));
     $('dialog-status').classList.add('is-error');
     showToast(isUserRejected(error) ? 'Wallet request declined. Nothing was completed.' : (error.message || 'Transaction failed.'), 'error');
     $('confirm-action').disabled = false;
@@ -889,12 +1098,21 @@ function initEvents() {
     try { sessionStorage.setItem('current-wallet-dismissed', 'true'); } catch {}
     renderWalletHeader();
     renderWalletPosition();
+    renderSavingsGoal();
     renderWalletControls();
     setWalletMessage('Disconnected from Current. Wallet permission remains managed by Nimiq Pay.');
     showToast('Disconnected from Current. Nimiq Pay still controls wallet permissions.', 'info');
   });
   $('refresh-market').addEventListener('click', () => loadMarket({ announce: true }));
   $('estimate-principal').addEventListener('input', renderYieldLens);
+  $('goal-form').addEventListener('submit', saveSavingsGoal);
+  $('goal-clear').addEventListener('click', clearSavingsGoal);
+  $('permit-fallback').addEventListener('click', () => {
+    if (state.pendingAction?.kind !== 'supply' || state.pendingAction.step !== 'permit') return;
+    state.pendingAction.step = 'approval';
+    setDialogPlan(state.pendingAction);
+    showToast('Standard exact-amount approval selected. It uses an approval transaction followed by supply.', 'info');
+  });
   $('tab-supply').addEventListener('click', () => setMode('supply'));
   $('tab-withdraw').addEventListener('click', () => setMode('withdraw'));
   $('amount-input').addEventListener('input', () => { updateAmountSummary(); renderWalletControls(); });
@@ -914,6 +1132,7 @@ function initEvents() {
       state.walletData = null;
       renderWalletHeader();
       renderWalletPosition();
+    renderSavingsGoal();
       renderWalletControls();
       if (state.wallet) refreshWallet().catch((error) => setWalletMessage(error.message, true));
       else setWalletMessage('Wallet disconnected.');
@@ -964,6 +1183,7 @@ async function init() {
   initMobilePages();
   initEvents();
   renderWalletControls();
+  renderSavingsGoal();
   const pending = savedPending();
   if (pending) {
     $('position-status').textContent = 'A prior transaction needs reconciliation';
