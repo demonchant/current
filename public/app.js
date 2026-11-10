@@ -1024,7 +1024,11 @@ function setDialogPlan(action) {
 async function postRelay(path, body) {
   const response = await fetch(`/api/relay/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body, (_key, value) => typeof value === 'bigint' ? value.toString() : value) });
   const result = await response.json();
-  if (!response.ok) throw new Error(result.message || result.error || 'The NIM gas relay request failed.');
+  if (!response.ok) {
+    const error = new Error(result.message || result.error || 'The NIM gas relay request failed.');
+    if (/^\d+$/.test(String(result.availableBalance ?? ''))) error.availableBalance = result.availableBalance;
+    throw error;
+  }
   return result;
 }
 
@@ -1479,9 +1483,17 @@ function initEvents() {
       $('nim-relay-button').textContent = 'Preparing NIM relay…';
       await prepareNimRelay();
     } catch (error) {
-      $('form-error').textContent = cleanCopy(error.message || 'Could not prepare the NIM gas relay.');
+      let message = error.message || 'Could not prepare the NIM gas relay.';
+      if (error.availableBalance !== undefined && state.walletData) {
+        state.walletData.tokenBalance = BigInt(error.availableBalance);
+        $('amount-input').value = '';
+        renderWalletPosition();
+        renderWalletControls();
+        message = `The Worker sees ${formatTokenAmount(state.walletData.tokenBalance, currentAsset().decimals)} ${currentAsset().symbol} available. The amount was cleared; use Max or enter a lower amount and retry. No NIM was sent.`;
+      }
+      $('form-error').textContent = cleanCopy(message);
       $('form-error').hidden = false;
-      showToast(error.message || 'Could not prepare the NIM gas relay.', 'error');
+      showToast(message, 'error');
     } finally {
       $('nim-relay-button').textContent = 'Supply with NIM-paid gas';
       setBusy(false);

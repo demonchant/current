@@ -11,6 +11,7 @@ const POOL = '0x794a61358D6845594F94dc1DB02A252b5b4814aD';
 const usdtAbi = parseAbi([
   'function nonces(address owner) view returns (uint256)',
   'function name() view returns (string)',
+  'function balanceOf(address owner) view returns (uint256)',
 ]);
 const poolAbi = parseAbi([
   'function supplyWithPermit(address asset,uint256 amount,address onBehalfOf,uint16 referralCode,uint256 deadline,uint8 permitV,bytes32 permitR,bytes32 permitS)',
@@ -28,6 +29,16 @@ function nimiqAddress(value) {
 function relayerKey(value) {
   const raw = String(value || '').replace(/^0x/i, '');
   return /^[0-9a-f]{64}$/i.test(raw) ? `0x${raw}` : null;
+}
+function errorChainText(error) {
+  const seen = new Set();
+  const messages = [];
+  while (error && !seen.has(error)) {
+    seen.add(error);
+    messages.push(error.shortMessage, error.message, error.details);
+    error = error.cause;
+  }
+  return messages.filter(Boolean).join(' ');
 }
 
 function configIssues(env) {
@@ -183,6 +194,9 @@ export default {
         const { owner, amount, asset: assetId = 'usdt' } = await request.json();
         const asset = TOKENS[assetId];
         if (!asset || !isAddress(owner) || !/^[1-9]\d{0,11}$/.test(String(amount))) return json({ error: 'Invalid owner, asset, or token amount.' }, 400);
+        const { publicClient } = clients(env);
+        const availableBalance = await publicClient.readContract({ address: asset.address, abi: usdtAbi, functionName: 'balanceOf', args: [owner] });
+        if (BigInt(amount) > availableBalance) return json({ error: `The Worker RPC sees less ${asset.symbol} than this supply amount. Refresh your balance and try again. No NIM payment was requested.`, availableBalance: availableBalance.toString() }, 409);
         const id = uuid();
         const quote = { id, owner, asset: assetId, amount: String(amount), fee: String(env.NIM_RELAY_FEE_LUNA), recipient: nimiqAddress(env.NIM_FEE_ADDRESS), supportUrl: env.RELAY_SUPPORT_URL, memo: `current:${id}`, expiresAt: Date.now() + 5 * 60_000, status: 'quoted' };
         await env.RELAY_JOBS.get(env.RELAY_JOBS.idFromName(id)).fetch('https://relay/job', { method: 'PUT', body: JSON.stringify(quote) });
@@ -198,10 +212,19 @@ export default {
         const quote = await (await jobStub.fetch('https://relay/job')).json();
         if (quote.status !== 'quoted' || quote.expiresAt < Date.now() || quote.owner.toLowerCase() !== body.owner.toLowerCase() || quote.amount !== String(body.amount) || (quote.asset || 'usdt') !== assetId) return json({ error: 'Quote expired or does not match this wallet, asset, and amount.' }, 409);
         const { account, publicClient } = clients(env);
+        const availableBalance = await publicClient.readContract({ address: asset.address, abi: usdtAbi, functionName: 'balanceOf', args: [body.owner] });
+        if (BigInt(body.amount) > availableBalance) return json({ error: `Your ${asset.symbol} balance changed or the Worker RPC sees less than the requested amount. Refresh your balance and try again. No NIM payment was requested.`, availableBalance: availableBalance.toString() }, 409);
         const nonce = await publicClient.readContract({ address: asset.address, abi: usdtAbi, functionName: 'nonces', args: [body.owner] });
         if (BigInt(body.permit.nonce) !== nonce || Number(body.permit.deadline) < Math.floor(Date.now() / 1000) || Number(body.permit.deadline) > Math.floor(Date.now() / 1000) + 1300) return json({ error: `${asset.symbol} permit is expired or has a different nonce.` }, 400);
         const call = { account, address: POOL, abi: poolAbi, functionName: 'supplyWithPermit', args: [asset.address, BigInt(body.amount), body.owner, 0, BigInt(body.permit.deadline), Number(body.permit.v), body.permit.r, body.permit.s] };
-        await publicClient.simulateContract(call);
+        try { await publicClient.simulateContract(call); }
+        catch (error) {
+          if (/transfer amount exceeds balance/i.test(errorChainText(error))) {
+            const currentBalance = await publicClient.readContract({ address: asset.address, abi: usdtAbi, functionName: 'balanceOf', args: [body.owner] });
+            return json({ error: `The Worker RPC cannot confirm enough ${asset.symbol} for this supply. Refresh your balance and try again. No NIM payment was requested.`, availableBalance: currentBalance.toString() }, 409);
+          }
+          throw error;
+        }
         const [gas, gasPrice, balance] = await Promise.all([
           publicClient.estimateContractGas(call), publicClient.getGasPrice(), publicClient.getBalance({ address: account.address }),
         ]);

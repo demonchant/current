@@ -1,6 +1,6 @@
 # Current
 
-**Current is a wallet-first savings experience for supplying native Polygon USDC or USDT0 to Aave V3 through Nimiq Pay.** It brings the selected asset's live market rate, the user's on-chain position, a cross-device savings goal, and clear transaction status into one focused interface.
+**Current helps people turn an existing stablecoin balance into a deliberate, trackable savings habit.** Built for Nimiq Pay and Polygon, it lets users supply native USDC or USDT0 to Aave V3, see the live variable rate and their on-chain position, set a goal that follows them across devices, and verify what happened after each transaction.
 
 [Open Current](https://current.oladapodamiey.workers.dev/) · [Launch through Nimiq Pay](https://nimpay.app/miniapps/open/current.oladapodamiey.workers.dev) · [Watch the walkthrough](https://youtu.be/EDPMHaYVrj0) · [Source code](https://github.com/demonchant/current)
 
@@ -8,15 +8,15 @@
 
 ## The problem Current addresses
 
-Someone holding USDC or USDT who wants to earn on it has to answer several questions before acting: which lending market is available, what rate it currently offers, how much of their wallet balance is free, what position they already have, what each wallet prompt will do, and whether the transaction actually completed. The information is often split between a protocol dashboard, a wallet, and a block explorer. After supplying funds, a rate snapshot alone also gives little reason to check back or track a longer-term target across devices.
+For a Nigerian saver who chooses to hold some savings in digital dollars, having a stablecoin balance is only one part of the job. Turning that balance into a consistent savings plan can mean jumping between a wallet, a lending-market page, network-fee instructions, and a block explorer. It is hard to judge the current rate, see what is already earning, understand each approval, or tell whether a transaction really completed. Savings goals can also disappear into notes or stay on one device, disconnected from the actual on-chain position.
 
-That friction is especially visible inside a wallet mini-app. The experience should explain the live opportunity and the user's own position in the same place, keep each authorization understandable, and give the user a useful reason to return without suggesting that variable yield is guaranteed.
+This is a practical access and follow-through problem: useful tools exist, but the path from money set aside to a savings action that is understandable and easy to track is fragmented. It matters in a country where people make careful choices about how to save amid changing prices and exchange rates, but Current does not solve inflation, provide a naira on-ramp, or guarantee that a stablecoin will keep its value.
 
-In short, the problem is not simply finding an APY. It is making a real on-chain savings action understandable from discovery through confirmation: show what the market currently offers, what the wallet actually owns, exactly what a signature or transaction authorizes, and whether the chain completed the action. Current is designed to reduce that context switching while leaving custody and final transaction approval with the user's wallet.
+Current brings the decision, action, and progress check into one Nimiq Pay Mini App. It shows the selected USDC or USDT0 market rate beside the user's Polygon balance and Aave position, lets the user set a cross-device goal, explains the exact authorization, and checks the on-chain receipt and resulting position. For supported Nimiq Pay sessions, an optional NIM-paid gas route can let the relayer cover Polygon gas for a disclosed NIM fee. The user remains in control of the wallet and confirms each action.
 
 ## How Current responds
 
-Current lets the user select native USDC or USDT0 on Polygon and reads that asset's Aave V3 reserve, supply APY, wallet balance, POL gas balance, and aToken position. It checks the selected token and aToken against fixed contract addresses, then presents an explicit review before a wallet action. After submission it waits for the chain receipt and checks the matching position before showing completion.
+Current lets the user select native USDC or USDT0 on Polygon and reads that asset's Aave V3 reserve, variable supply APY, wallet balance, POL gas balance, and aToken position. It checks the selected token and aToken against fixed contract addresses, then presents an explicit review before a wallet action. After submission it waits for the chain receipt and checks the matching position before showing completion. The standard route needs POL for Polygon gas; the optional NIM relay charges a separately displayed NIM fee and is available only when the Worker and Nimiq Pay payment provider are ready.
 
 The **Savings Goal** adds a lightweight follow-up loop. A user sets a target and date for the selected stablecoin; Current shows progress against the matching on-chain aToken balance and offers an illustrative projection using that reserve's current Aave rate. Goals are stored by the Current Worker and wallet address, separately for USDC and USDT0. Reading or changing a goal requires a fresh, one-time wallet signature over a clear action and nonce; no transaction or token approval is involved. The goal is not encrypted from the service operator, so it contains no information beyond the target and date. The progress bar follows the on-chain position; projected yield is only an estimate and is never guaranteed.
 
