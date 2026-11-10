@@ -778,7 +778,8 @@ function renderWalletControls() {
   $('tab-supply').disabled = state.busy;
   const hasAmount = validAmountForCurrentMode();
   const canWrite = onPolygon && actionAvailable && hasAmount && BigInt(state.walletData?.nativeBalance ?? 0) > 0n && !state.busy;
-  $('review-button').disabled = !canWrite;
+  const canSwitchNetwork = connected && state.walletChainId !== CHAIN_ID && !state.busy;
+  $('review-button').disabled = !canSwitchNetwork && !canWrite;
   const relayButton = $('nim-relay-button');
   relayButton.hidden = state.mode !== 'supply';
   $('nim-relay-caption').hidden = relayButton.hidden;
@@ -854,7 +855,8 @@ function updateAmountSummary() {
     : 'Balance unavailable';
   const enough = validAmountForCurrentMode();
   const marketAvailable = state.mode === 'supply' ? marketAllowsSupply() : marketIsFresh();
-  $('review-button').disabled = !enough || !state.walletData || state.walletChainId !== CHAIN_ID || state.busy || !marketAvailable || BigInt(state.walletData?.nativeBalance ?? 0) === 0n;
+  const canSwitchNetwork = Boolean(state.wallet && state.walletChainId !== CHAIN_ID && !state.busy);
+  $('review-button').disabled = !canSwitchNetwork && (!enough || !state.walletData || state.walletChainId !== CHAIN_ID || state.busy || !marketAvailable || BigInt(state.walletData?.nativeBalance ?? 0) === 0n);
 }
 
 function setMode(mode) {
@@ -1100,7 +1102,7 @@ function restoreRelayStatus() {
 async function reviewSubmit(event) {
   event.preventDefault();
   if (!state.wallet) return connectWallet();
-  if (!state.walletData) return switchToPolygon();
+  if (!state.walletData || state.walletChainId !== CHAIN_ID) return switchToPolygon();
   if (!state.market || state.gqlBusy || Date.now() - state.market.fetchedAt.getTime() >= 60_000) return showToast('Live Aave market data is unavailable or out of date. Refresh it before preparing a transaction.');
   try {
     const amount = amountFromInput($('amount-input').value, state.mode, state.walletData.tokenBalance, state.walletData.aTokenBalance, currentAsset().decimals, currentAsset().symbol);
