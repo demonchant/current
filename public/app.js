@@ -525,7 +525,7 @@ async function connectWallet() {
     renderWalletHeader();
     renderSavingsGoal();
     await refreshWallet();
-    if (Number.parseInt(chain, 16) !== CHAIN_ID) {
+    if (parseChainId(chain) !== CHAIN_ID) {
       setWalletMessage('Balance read from Polygon. Switch the wallet to Polygon before transacting.');
       $('gas-balance').textContent = 'Switch wallet to Polygon to transact';
       renderWalletControls();
@@ -546,6 +546,14 @@ async function connectWallet() {
 
 function isUserRejected(error) { return error?.code === 4001 || error?.code === 'ACTION_REJECTED'; }
 
+function parseChainId(value) {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return value;
+  if (typeof value !== 'string') return null;
+  if (/^0x[0-9a-f]+$/i.test(value)) return Number.parseInt(value, 16);
+  if (/^[0-9]+$/.test(value)) return Number(value);
+  return null;
+}
+
 async function switchToPolygon() {
   const injected = provider();
   if (!injected) return connectWallet();
@@ -553,7 +561,7 @@ async function switchToPolygon() {
   try {
     await injected.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: POLYGON_HEX_CHAIN_ID }] });
     const chain = await injected.request({ method: 'eth_chainId' });
-    if (Number.parseInt(chain, 16) !== CHAIN_ID) throw new Error('The wallet is still on a different network.');
+    if (parseChainId(chain) !== CHAIN_ID) throw new Error('The wallet is still on a different network.');
     await refreshWallet();
     void loadSavingsGoal();
     showToast('Polygon is connected. Review the live position before taking action.');
@@ -692,7 +700,7 @@ async function refreshWallet() {
     ethCall(asset.aToken, `0x1da24f3e${state.wallet.slice(2).toLowerCase().padStart(64, '0')}`).catch(() => null),
   ]);
   if (state.assetId !== assetId) return;
-  state.walletChainId = Number.parseInt(chain, 16);
+  state.walletChainId = parseChainId(chain);
   state.walletData = { tokenBalance, aTokenBalance, allowance, nativeBalance, scaledBalance, fetchedAt: new Date() };
   renderWalletHeader();
   renderWalletPosition();
@@ -763,8 +771,9 @@ function renderWalletControls() {
   const actionAvailable = state.mode === 'supply' ? marketAllowsSupply() : marketFresh;
   const input = $('amount-input');
   for (const asset of Object.values(ASSETS)) $(`asset-${asset.id}`).disabled = state.busy || Boolean(state.pendingAction);
-  input.disabled = !onPolygon || state.busy || !actionAvailable;
-  $('max-button').disabled = !onPolygon || state.busy || !actionAvailable;
+  const canEnterAmount = Boolean(state.walletData && !state.busy && (state.mode === 'supply' || onPolygon));
+  input.disabled = !canEnterAmount;
+  $('max-button').disabled = !canEnterAmount;
   $('tab-withdraw').disabled = !onPolygon || BigInt(state.walletData?.aTokenBalance ?? 0) === 0n || state.busy;
   $('tab-supply').disabled = state.busy;
   const hasAmount = validAmountForCurrentMode();
@@ -845,7 +854,7 @@ function updateAmountSummary() {
     : 'Balance unavailable';
   const enough = validAmountForCurrentMode();
   const marketAvailable = state.mode === 'supply' ? marketAllowsSupply() : marketIsFresh();
-  $('review-button').disabled = !enough || !state.walletData || state.busy || !marketAvailable || BigInt(state.walletData?.nativeBalance ?? 0) === 0n;
+  $('review-button').disabled = !enough || !state.walletData || state.walletChainId !== CHAIN_ID || state.busy || !marketAvailable || BigInt(state.walletData?.nativeBalance ?? 0) === 0n;
 }
 
 function setMode(mode) {
@@ -1120,7 +1129,7 @@ async function recheckBeforeWrite() {
     injected.request({ method: 'eth_accounts' }), injected.request({ method: 'eth_chainId' }),
   ]);
   if (!Array.isArray(accounts) || accounts[0]?.toLowerCase() !== state.wallet.toLowerCase()) throw new Error('Wallet account changed. Reconnect and review again.');
-  if (Number.parseInt(chain, 16) !== CHAIN_ID) throw new Error('Wallet network changed. Switch back to Polygon and review again.');
+  if (parseChainId(chain) !== CHAIN_ID) throw new Error('Wallet network changed. Switch back to Polygon and review again.');
 }
 
 async function sendValidated(transaction, kind, amount, asset = currentAsset()) {
