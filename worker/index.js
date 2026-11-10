@@ -27,10 +27,18 @@ function relayerKey(value) {
   return /^[0-9a-f]{64}$/i.test(raw) ? `0x${raw}` : null;
 }
 
-function config(env) {
+function configIssues(env) {
   const isHttpsUrl = (value) => { try { return new URL(value).protocol === 'https:'; } catch { return false; } };
-  return Boolean(relayerKey(env.RELAYER_PRIVATE_KEY) && nimiqAddress(env.NIM_FEE_ADDRESS) && /^[1-9]\d{0,8}$/.test(String(env.NIM_RELAY_FEE_LUNA || '')) && isHttpsUrl(env.POLYGON_RPC_URL) && isHttpsUrl(env.NIMIQ_RPC_URL) && isHttpsUrl(env.RELAY_SUPPORT_URL));
+  return [
+    ['RELAYER_PRIVATE_KEY', Boolean(relayerKey(env.RELAYER_PRIVATE_KEY))],
+    ['NIM_FEE_ADDRESS', Boolean(nimiqAddress(env.NIM_FEE_ADDRESS))],
+    ['NIM_RELAY_FEE_LUNA', /^[1-9]\d{0,8}$/.test(String(env.NIM_RELAY_FEE_LUNA || ''))],
+    ['POLYGON_RPC_URL', isHttpsUrl(env.POLYGON_RPC_URL)],
+    ['NIMIQ_RPC_URL', isHttpsUrl(env.NIMIQ_RPC_URL)],
+    ['RELAY_SUPPORT_URL', isHttpsUrl(env.RELAY_SUPPORT_URL)],
+  ].filter(([, valid]) => !valid).map(([name]) => name);
 }
+function config(env) { return configIssues(env).length === 0; }
 function clients(env) {
   const account = privateKeyToAccount(relayerKey(env.RELAYER_PRIVATE_KEY));
   const publicClient = createPublicClient({ chain: polygon, transport: http(env.POLYGON_RPC_URL) });
@@ -108,7 +116,10 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, 'access-control-allow-origin': url.origin, 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'content-type' } });
     const origin = request.headers.get('origin');
     if (origin && new URL(origin).origin !== url.origin) return json({ error: 'Origin rejected' }, 403);
-    if (url.pathname === '/api/relay/status' && request.method === 'GET') return json({ enabled: config(env), feeUnit: 'luna' });
+    if (url.pathname === '/api/relay/status' && request.method === 'GET') {
+      const missing = configIssues(env);
+      return json({ enabled: missing.length === 0, feeUnit: 'luna', missing });
+    }
     if (!config(env)) return json({ error: 'NIM gas relay is not configured yet.' }, 503);
 
     try {

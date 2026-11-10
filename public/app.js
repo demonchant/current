@@ -30,6 +30,7 @@ const FX_ENDPOINT = 'https://open.er-api.com/v6/latest/USD';
 const RELAY_PENDING_KEY = 'current.relay.pending.v1';
 let nimRelayEnabled = false;
 let nimRelayStatusUnavailable = false;
+let nimRelayConfigurationIssues = [];
 function wasWalletDismissed() { try { return sessionStorage.getItem('current-wallet-dismissed') === 'true'; } catch { return false; } }
 const state = {
   market: null,
@@ -680,7 +681,7 @@ function renderWalletControls() {
   const relayUnavailableReason = nimRelayStatusUnavailable
     ? 'NIM-paid gas is unavailable because relay status could not be reached. Try again when the service is available.'
     : !nimRelayEnabled
-    ? 'NIM-paid gas is unavailable because the relay Worker is not configured.'
+    ? `NIM-paid gas is unavailable because Worker configuration is incomplete${nimRelayConfigurationIssues.length ? `: ${nimRelayConfigurationIssues.join(', ')}` : '.'}`
     : !connected ? 'Connect a Polygon wallet before using NIM-paid gas.'
       : !onPolygon ? 'Switch to Polygon and refresh your wallet before using NIM-paid gas.'
         : !window.nimiq?.sendBasicTransactionWithData ? 'Nimiq Pay payment access is unavailable here. Open Current in the Nimiq Pay app to use NIM-paid gas.'
@@ -712,7 +713,8 @@ async function loadNimRelayStatus() {
     const data = await response.json();
     nimRelayEnabled = response.ok && data.enabled === true;
     nimRelayStatusUnavailable = !response.ok;
-  } catch { nimRelayEnabled = false; nimRelayStatusUnavailable = true; }
+    nimRelayConfigurationIssues = Array.isArray(data.missing) ? data.missing.filter((name) => typeof name === 'string') : [];
+  } catch { nimRelayEnabled = false; nimRelayStatusUnavailable = true; nimRelayConfigurationIssues = []; }
   renderWalletControls();
 }
 

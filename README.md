@@ -146,7 +146,7 @@ The app and `/api/relay/*` endpoint run in one Cloudflare Worker. Deploy with Wr
 npx wrangler deploy
 ```
 
-The NIM relay stays disabled until configured. The app requests `GET /api/relay/status`; the response exposes only whether relay configuration is complete and the fee unit, not secret values. If the Worker reports that it is not configured, or the status endpoint cannot be reached, the app keeps the supply action safely disabled and explains the corresponding reason. The button is shown on the Supply tab so the user can see relay availability; it is hidden on Withdraw.
+The NIM relay stays disabled until configured. The app requests `GET /api/relay/status`; the response exposes whether relay configuration is complete, the fee unit, and names of settings that are absent or fail format validation. It never returns configured values or secrets. If the Worker reports incomplete configuration, or the status endpoint cannot be reached, the app keeps the supply action safely disabled and explains the corresponding reason. The button is shown on the Supply tab so the user can see relay availability; it is hidden on Withdraw.
 
 Configure these non-secret Worker variables in the Cloudflare dashboard:
 
