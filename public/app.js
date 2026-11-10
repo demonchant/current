@@ -1022,7 +1022,7 @@ function setDialogPlan(action) {
 }
 
 async function postRelay(path, body) {
-  const response = await fetch(`/api/relay/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body) });
+  const response = await fetch(`/api/relay/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body, (_key, value) => typeof value === 'bigint' ? value.toString() : value) });
   const result = await response.json();
   if (!response.ok) throw new Error(result.message || result.error || 'The NIM gas relay request failed.');
   return result;
