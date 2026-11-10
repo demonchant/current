@@ -166,6 +166,8 @@ Configure these as **Worker secrets**, never as plaintext README values:
 
 The Worker also needs the `RELAY_JOBS` and `PAYMENT_CLAIMS` Durable Object bindings and migrations defined in `wrangler.jsonc`. The relayer account must have enough POL to submit Polygon transactions. Before enabling the relay for users, confirm the support process and fee/refund policy, test in a controlled environment, verify that `/api/relay/status` reports enabled, and validate the full flow inside Nimiq Pay. A Wrangler dry run does not validate runtime secrets or the live wallet flow.
 
+`wrangler.jsonc` sets `keep_vars` to `true` so deploying code with Wrangler preserves non-secret variables configured in the Cloudflare dashboard. Wrangler otherwise replaces dashboard-managed variables with the variables declared in its config; secrets are managed separately and are not removed by code deployments. Keep the dashboard variable settings as the source of truth unless you intentionally move them into Wrangler configuration.
+
 Add secrets through Cloudflare's dashboard or Wrangler's interactive secret command, substituting only the secret name when prompted:
 
 ```sh

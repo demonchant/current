@@ -1,6 +1,7 @@
 {
   "name": "current",
   "compatibility_date": "2026-11-04",
+  "keep_vars": true,
   "main": "./worker/index.js",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
