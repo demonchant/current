@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#252a43" />
+  <meta name="description" content="Get help checking a Current NIM gas relay." />
+  <title>Current relay support</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    .support-page { min-height:100vh; display:grid; place-items:center; padding:24px; background:#f7f7fa; color:#252a43; font-family:Inter,system-ui,sans-serif; }
+    .support-card { width:min(620px,100%); padding:clamp(24px,5vw,42px); border:1px solid #dfe2ec; border-radius:20px; background:#fff; box-shadow:0 16px 50px rgba(28,34,61,.08); }
+    .support-card h1 { margin:8px 0 12px; font-size:clamp(26px,6vw,38px); letter-spacing:-1px; }
+    .support-card p,.support-card li { color:#626b83; font-size:14px; line-height:1.7; }
+    .support-card a { color:#5444a6; font-weight:700; }
+    .support-card .support-button { display:inline-flex; margin-top:14px; padding:13px 17px; border-radius:10px; color:#fff; background:#5444a6; text-decoration:none; }
+    .support-warning { padding:13px 15px; border-radius:10px; background:#fff6df; color:#725a14 !important; }
+  </style>
+</head>
+<body class="support-page">
+  <main class="support-card">
+    <p class="card-overline">CURRENT · RELAY SUPPORT</p>
+    <h1>Need help with a NIM gas relay?</h1>
+    <p>If you paid the quoted NIM fee and the Polygon supply has not completed, do not send another payment. Check the relay status in Current first.</p>
+    <p>For support, open a GitHub issue and include the quote ID, Nimiq transaction hash, and Polygon transaction hash if one exists. These transaction details are public on their respective blockchains.</p>
+    <p class="support-warning">Never include your seed phrase, private key, wallet password, or recovery file. Support will never need them.</p>
+    <a class="support-button" href="https://github.com/demonchant/current/issues/new" target="_blank" rel="noreferrer">Open a support issue ↗</a>
+    <p><a href="/app">Return to Current</a></p>
+  </main>
+</body>
+</html>

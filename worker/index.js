@@ -17,14 +17,22 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), { status
 const isAddress = (v) => /^0x[0-9a-f]{40}$/i.test(v || '');
 const isHash = (v) => /^(?:0x)?[0-9a-f]{64}$/i.test(v || '');
 const uuid = () => crypto.randomUUID();
+function nimiqAddress(value) {
+  const compact = String(value || '').replace(/\s/g, '').toUpperCase();
+  if (!/^NQ[A-Z0-9]{34}$/.test(compact)) return null;
+  return compact.match(/.{1,4}/g).join(' ');
+}
+function relayerKey(value) {
+  const raw = String(value || '').replace(/^0x/i, '');
+  return /^[0-9a-f]{64}$/i.test(raw) ? `0x${raw}` : null;
+}
 
 function config(env) {
-  let validSupportUrl = false;
-  try { validSupportUrl = new URL(env.RELAY_SUPPORT_URL).protocol === 'https:'; } catch { /* Disabled until a real support path is configured. */ }
-  return Boolean(env.RELAYER_PRIVATE_KEY && env.NIM_FEE_ADDRESS && /^[1-9]\d{0,8}$/.test(String(env.NIM_RELAY_FEE_LUNA || '')) && env.POLYGON_RPC_URL && env.NIMIQ_RPC_URL && validSupportUrl);
+  const isHttpsUrl = (value) => { try { return new URL(value).protocol === 'https:'; } catch { return false; } };
+  return Boolean(relayerKey(env.RELAYER_PRIVATE_KEY) && nimiqAddress(env.NIM_FEE_ADDRESS) && /^[1-9]\d{0,8}$/.test(String(env.NIM_RELAY_FEE_LUNA || '')) && isHttpsUrl(env.POLYGON_RPC_URL) && isHttpsUrl(env.NIMIQ_RPC_URL) && isHttpsUrl(env.RELAY_SUPPORT_URL));
 }
 function clients(env) {
-  const account = privateKeyToAccount(env.RELAYER_PRIVATE_KEY);
+  const account = privateKeyToAccount(relayerKey(env.RELAYER_PRIVATE_KEY));
   const publicClient = createPublicClient({ chain: polygon, transport: http(env.POLYGON_RPC_URL) });
   const walletClient = createWalletClient({ account, chain: polygon, transport: http(env.POLYGON_RPC_URL) });
   return { account, publicClient, walletClient };
@@ -108,7 +116,7 @@ export default {
         const { owner, amount } = await request.json();
         if (!isAddress(owner) || !/^[1-9]\d{0,11}$/.test(String(amount))) return json({ error: 'Invalid owner or USDT amount.' }, 400);
         const id = uuid();
-        const quote = { id, owner, amount: String(amount), fee: String(env.NIM_RELAY_FEE_LUNA), recipient: env.NIM_FEE_ADDRESS, supportUrl: env.RELAY_SUPPORT_URL, memo: `current:${id}`, expiresAt: Date.now() + 5 * 60_000, status: 'quoted' };
+        const quote = { id, owner, amount: String(amount), fee: String(env.NIM_RELAY_FEE_LUNA), recipient: nimiqAddress(env.NIM_FEE_ADDRESS), supportUrl: env.RELAY_SUPPORT_URL, memo: `current:${id}`, expiresAt: Date.now() + 5 * 60_000, status: 'quoted' };
         await env.RELAY_JOBS.get(env.RELAY_JOBS.idFromName(id)).fetch('https://relay/job', { method: 'PUT', body: JSON.stringify(quote) });
         return json(quote);
       }
