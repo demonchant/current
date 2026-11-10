@@ -35,6 +35,7 @@ const state = {
   market: null,
   wallet: null,
   walletData: null,
+  walletChainId: null,
   fx: null,
   fxError: false,
   walletReturnSnapshot: null,
@@ -523,15 +524,14 @@ async function connectWallet() {
     const chain = await injected.request({ method: 'eth_chainId' });
     renderWalletHeader();
     renderSavingsGoal();
+    await refreshWallet();
     if (Number.parseInt(chain, 16) !== CHAIN_ID) {
-      state.walletData = null;
-      setWalletMessage('Switch to Polygon to read this position.');
-      $('gas-balance').textContent = 'Switch network to check';
+      setWalletMessage('Balance read from Polygon. Switch the wallet to Polygon before transacting.');
+      $('gas-balance').textContent = 'Switch wallet to Polygon to transact';
       renderWalletControls();
-      showToast('Switch to Polygon to view your position.', 'info');
+      showToast('Polygon balance shown. Switch the wallet to Polygon before transacting.', 'info');
       return;
     }
-    await refreshWallet();
     void loadSavingsGoal();
     renderWalletControls();
     showToast(`Connected ${shortAddress(state.wallet)} through the wallet provider.`);
@@ -568,11 +568,23 @@ async function switchToPolygon() {
   } finally { setBusy(false); }
 }
 
+const POLYGON_READ_RPCS = ['https://polygon-bor-rpc.publicnode.com', 'https://polygon-rpc.com'];
+
+async function polygonRead(method, params) {
+  for (const url of POLYGON_READ_RPCS) {
+    try {
+      const response = await fetch(url, { method: 'POST', credentials: 'omit', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+      if (!response.ok) continue;
+      const payload = await response.json();
+      if (!payload.error && payload.result !== undefined) return payload.result;
+    } catch {}
+  }
+  throw new Error('Polygon balance service is temporarily unavailable. Refresh and try again.');
+}
+
 async function ethCall(to, data) {
-  const injected = provider();
-  if (!injected) throw new Error('Open this Mini App inside Nimiq Pay to read your wallet.');
-  const result = await injected.request({ method: 'eth_call', params: [{ to, data }, 'latest'] });
-  if (typeof result !== 'string' || !/^0x[0-9a-fA-F]+$/.test(result)) throw new Error('The Polygon provider returned an invalid read result.');
+  const result = await polygonRead('eth_call', [{ to, data }, 'latest']);
+  if (typeof result !== 'string' || !/^0x[0-9a-fA-F]+$/.test(result)) throw new Error('Polygon returned an invalid contract read result.');
   return BigInt(result);
 }
 
@@ -672,34 +684,22 @@ async function refreshWallet() {
     setWalletMessage('Wallet account changed. Refresh the position before continuing.');
     return;
   }
-  if (Number.parseInt(chain, 16) !== CHAIN_ID) {
-    state.walletData = null;
-    $('gas-balance').textContent = 'Switch network to check';
-    setWalletMessage('Switch to Polygon to read this position.');
-    renderWalletControls();
-    return;
-  }
-  if (!state.market) {
-    state.walletData = null;
-    $('gas-balance').textContent = 'Market data unavailable';
-    renderWalletControls();
-    return;
-  }
   const [tokenBalance, aTokenBalance, allowance, nativeBalance, scaledBalance] = await Promise.all([
     ethCall(asset.address, encodeBalanceOf(state.wallet)),
     ethCall(asset.aToken, encodeBalanceOf(state.wallet)),
     ethCall(asset.address, encodeAllowance(state.wallet, AAVE_V3_POLYGON_POOL)),
-    injected.request({ method: 'eth_getBalance', params: [state.wallet, 'latest'] }).then(BigInt),
+    polygonRead('eth_getBalance', [state.wallet, 'latest']).then(BigInt),
     ethCall(asset.aToken, `0x1da24f3e${state.wallet.slice(2).toLowerCase().padStart(64, '0')}`).catch(() => null),
   ]);
   if (state.assetId !== assetId) return;
+  state.walletChainId = Number.parseInt(chain, 16);
   state.walletData = { tokenBalance, aTokenBalance, allowance, nativeBalance, scaledBalance, fetchedAt: new Date() };
   renderWalletHeader();
   renderWalletPosition();
   renderSavingsGoal();
   $('gas-balance').textContent = `${formatTokenAmount(nativeBalance, 18, 5)} POL`;
   $('available-label').textContent = state.mode === 'supply' ? `${formatTokenAmount(tokenBalance, asset.decimals)} ${asset.symbol} available` : `${formatTokenAmount(aTokenBalance, asset.decimals)} ${asset.symbol} supplied`;
-  setWalletMessage('Position read directly from Polygon');
+  setWalletMessage(state.walletChainId === CHAIN_ID ? 'Position read directly from Polygon' : 'Balance read from Polygon; switch the wallet to Polygon before transacting.');
   renderWalletControls();
 }
 
@@ -719,6 +719,10 @@ function renderWalletHeader() {
 }
 
 function renderWalletPosition() {
+  const marketBalance = $('market-wallet-balance');
+  if (marketBalance) marketBalance.textContent = state.walletData
+    ? formatTokenAmount(state.walletData.tokenBalance, currentAsset().decimals) + ' ' + currentAsset().symbol + ' available'
+    : state.wallet ? 'Reading Polygon balance…' : 'Connect wallet to see your balance';
   if (!state.walletData) {
     $('position-value').textContent = state.wallet ? 'Waiting for Polygon' : 'Connect your wallet';
     $('position-naira').textContent = 'Connect a Polygon wallet to see the indicative naira value of this position.';
@@ -754,7 +758,7 @@ function marketAllowsSupply() {
 
 function renderWalletControls() {
   const connected = Boolean(state.wallet);
-  const onPolygon = connected && state.walletData !== null;
+  const onPolygon = connected && state.walletData !== null && state.walletChainId === CHAIN_ID;
   const marketFresh = marketIsFresh();
   const actionAvailable = state.mode === 'supply' ? marketAllowsSupply() : marketFresh;
   const input = $('amount-input');
@@ -786,13 +790,13 @@ function renderWalletControls() {
   $('connect-top').disabled = state.busy;
   $('disconnect-top').disabled = state.busy;
   if (!connected) $('primary-label').textContent = 'Connect wallet';
-  else if (!state.walletData) $('primary-label').textContent = 'Switch to Polygon';
+  else if (!onPolygon) $('primary-label').textContent = 'Switch to Polygon';
   else if (!actionAvailable) $('primary-label').textContent = state.mode === 'supply' && marketFresh ? 'Supply unavailable' : 'Market unavailable';
   else if (BigInt(state.walletData.nativeBalance) === 0n) $('primary-label').textContent = 'POL needed for gas';
   else $('primary-label').textContent = state.mode === 'supply' ? 'Review supply' : 'Review withdrawal';
   $('action-caption').textContent = !connected
     ? 'Open this Mini App in Nimiq Pay to connect a wallet.'
-    : !state.walletData ? 'Switch to Polygon before reading your position.'
+    : !onPolygon ? 'Polygon balance is visible. Switch the wallet to Polygon before transacting.'
       : BigInt(state.walletData.nativeBalance) === 0n ? 'Add POL to your Polygon wallet before a transaction.'
         : state.mode === 'supply' ? 'Supply: exact permit signature, then one POL-fee transaction. Standard approval is available as a fallback.' : 'Your wallet will show the withdrawal transaction for approval.';
   updateAmountSummary();
@@ -1435,7 +1439,7 @@ function maxAmount() {
 function initEvents() {
   $('connect-top').addEventListener('click', () => {
     if (!state.wallet) { state.walletDismissed = false; try { sessionStorage.removeItem('current-wallet-dismissed'); } catch {} return connectWallet(); }
-    if (!state.walletData) return switchToPolygon();
+    if (!state.walletData || state.walletChainId !== CHAIN_ID) return switchToPolygon();
     return refreshWallet().then(() => showToast('Wallet balances refreshed.')).catch((error) => { setWalletMessage(error.message, true); showToast(error.message, 'error'); });
   });
   $('disconnect-top').addEventListener('click', () => {
