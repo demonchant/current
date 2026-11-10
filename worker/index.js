@@ -1,9 +1,12 @@
 import { DurableObject } from 'cloudflare:workers';
-import { createPublicClient, createWalletClient, http, parseAbi } from 'viem';
+import { createPublicClient, createWalletClient, http, parseAbi, recoverMessageAddress } from 'viem';
 import { polygon } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 
-const USDT = '0xc2132D05D31c914a87C6611C10748AEb04B58E8F';
+const TOKENS = Object.freeze({
+  usdt: { address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', symbol: 'USDT' },
+  usdc: { address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', symbol: 'USDC' },
+});
 const POOL = '0x794a61358D6845594F94dc1DB02A252b5b4814aD';
 const usdtAbi = parseAbi([
   'function nonces(address owner) view returns (uint256)',
@@ -39,6 +42,9 @@ function configIssues(env) {
   ].filter(([, valid]) => !valid).map(([name]) => name);
 }
 function config(env) { return configIssues(env).length === 0; }
+function goalMessage({ owner, nonce, action, asset, targetRaw = '', date = '' }) {
+  return `Current savings goal ${action}\nWallet: ${owner.toLowerCase()}\nNonce: ${nonce}\nAsset: ${asset}\nTarget raw: ${targetRaw}\nTarget date: ${date}`;
+}
 function clients(env) {
   const account = privateKeyToAccount(relayerKey(env.RELAYER_PRIVATE_KEY));
   const publicClient = createPublicClient({ chain: polygon, transport: http(env.POLYGON_RPC_URL) });
@@ -56,6 +62,29 @@ async function nimiqRpc(env, method, params) {
 export class RelayJob extends DurableObject {
   constructor(ctx, env) { super(ctx, env); this.env = env; }
   async fetch(request) {
+    const path = new URL(request.url).pathname;
+    if (path === '/goals/nonce' && request.method === 'POST') {
+      const nonce = uuid();
+      await this.ctx.storage.put('goal_nonce', { nonce, expiresAt: Date.now() + 5 * 60_000 });
+      return json({ nonce });
+    }
+    if (path === '/goals/access' && request.method === 'POST') {
+      const { nonce, action, goal } = await request.json();
+      try {
+        const result = await this.ctx.storage.transaction(async (txn) => {
+          const savedNonce = await txn.get('goal_nonce');
+          if (!savedNonce || savedNonce.nonce !== nonce || savedNonce.expiresAt < Date.now()) return null;
+          await txn.delete('goal_nonce');
+          const goals = (await txn.get('goals')) || {};
+          if (action === 'save') goals[goal.asset] = goal;
+          else if (action === 'delete') delete goals[goal.asset];
+          await txn.put('goals', goals);
+          return { authorized: true, goal: action === 'read' ? goals[goal.asset] || null : action === 'delete' ? null : goals[goal.asset] };
+        });
+        if (!result?.authorized) return json({ error: 'Goal authorization expired or was already used.' }, 409);
+        return json({ goal: result.goal });
+      } catch { return json({ error: 'Goal storage is temporarily unavailable.' }, 503); }
+    }
     if (request.method === 'PUT') {
       const job = await request.json();
       await this.ctx.storage.put('job', job);
@@ -112,7 +141,7 @@ export class PaymentClaims extends DurableObject {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (!url.pathname.startsWith('/api/relay/')) return env.ASSETS.fetch(request);
+    if (!url.pathname.startsWith('/api/relay/') && !url.pathname.startsWith('/api/goals/')) return env.ASSETS.fetch(request);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...headers, 'access-control-allow-origin': url.origin, 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'content-type' } });
     const origin = request.headers.get('origin');
     if (origin && new URL(origin).origin !== url.origin) return json({ error: 'Origin rejected' }, 403);
@@ -120,28 +149,58 @@ export default {
       const missing = configIssues(env);
       return json({ enabled: missing.length === 0, feeUnit: 'luna', missing });
     }
+    if (url.pathname === '/api/goals/nonce' && request.method === 'POST') {
+      const { owner } = await request.json();
+      if (!isAddress(owner)) return json({ error: 'A valid wallet address is required.' }, 400);
+      const stub = env.RELAY_JOBS.get(env.RELAY_JOBS.idFromName(`goals:${owner.toLowerCase()}`));
+      return stub.fetch('https://goals/nonce', { method: 'POST' });
+    }
+    if (url.pathname === '/api/goals/access' && request.method === 'POST') {
+      const body = await request.json();
+      const { owner, nonce, action, asset, targetRaw, date, signature } = body;
+      const token = TOKENS[asset];
+      if (!isAddress(owner) || !token || !['read', 'save', 'delete'].includes(action) ||
+          typeof nonce !== 'string' || typeof signature !== 'string' || !/^0x[0-9a-f]{130}$/i.test(signature)) {
+        return json({ error: 'Invalid savings goal authorization.' }, 400);
+      }
+      if (action === 'save' && (!/^\d{1,78}$/.test(String(targetRaw)) || BigInt(targetRaw) <= 0n || BigInt(targetRaw) >= 2n ** 256n ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || Number.isNaN(Date.parse(`${date}T23:59:59Z`)) || new Date(`${date}T23:59:59Z`).toISOString().slice(0, 10) !== date || new Date(`${date}T23:59:59Z`).getTime() <= Date.now())) {
+        return json({ error: 'Choose a valid positive goal and a future date.' }, 400);
+      }
+      const message = goalMessage({ owner, nonce, action, asset, targetRaw: action === 'save' ? String(targetRaw) : '', date: action === 'save' ? date : '' });
+      let recovered;
+      try { recovered = await recoverMessageAddress({ message, signature }); }
+      catch { return json({ error: 'Wallet signature could not be verified.' }, 401); }
+      if (recovered.toLowerCase() !== owner.toLowerCase()) return json({ error: 'Wallet signature does not match this address.' }, 401);
+      const stub = env.RELAY_JOBS.get(env.RELAY_JOBS.idFromName(`goals:${owner.toLowerCase()}`));
+      const goal = { asset, targetRaw: String(targetRaw || ''), date: String(date || '') };
+      return stub.fetch('https://goals/access', { method: 'POST', body: JSON.stringify({ nonce, action, goal }) });
+    }
     if (!config(env)) return json({ error: 'NIM gas relay is not configured yet.' }, 503);
 
     try {
       if (url.pathname === '/api/relay/quote' && request.method === 'POST') {
-        const { owner, amount } = await request.json();
-        if (!isAddress(owner) || !/^[1-9]\d{0,11}$/.test(String(amount))) return json({ error: 'Invalid owner or USDT amount.' }, 400);
+        const { owner, amount, asset: assetId = 'usdt' } = await request.json();
+        const asset = TOKENS[assetId];
+        if (!asset || !isAddress(owner) || !/^[1-9]\d{0,11}$/.test(String(amount))) return json({ error: 'Invalid owner, asset, or token amount.' }, 400);
         const id = uuid();
-        const quote = { id, owner, amount: String(amount), fee: String(env.NIM_RELAY_FEE_LUNA), recipient: nimiqAddress(env.NIM_FEE_ADDRESS), supportUrl: env.RELAY_SUPPORT_URL, memo: `current:${id}`, expiresAt: Date.now() + 5 * 60_000, status: 'quoted' };
+        const quote = { id, owner, asset: assetId, amount: String(amount), fee: String(env.NIM_RELAY_FEE_LUNA), recipient: nimiqAddress(env.NIM_FEE_ADDRESS), supportUrl: env.RELAY_SUPPORT_URL, memo: `current:${id}`, expiresAt: Date.now() + 5 * 60_000, status: 'quoted' };
         await env.RELAY_JOBS.get(env.RELAY_JOBS.idFromName(id)).fetch('https://relay/job', { method: 'PUT', body: JSON.stringify(quote) });
         return json(quote);
       }
 
       if (url.pathname === '/api/relay/prepare' && request.method === 'POST') {
         const body = await request.json();
-        if (!/^[0-9a-f-]{36}$/i.test(body.quoteId || '') || !isAddress(body.owner) || !/^[1-9]\d{0,11}$/.test(String(body.amount))) return json({ error: 'Invalid relay request.' }, 400);
+        const assetId = body.asset || 'usdt';
+        const asset = TOKENS[assetId];
+        if (!/^[0-9a-f-]{36}$/i.test(body.quoteId || '') || !asset || !isAddress(body.owner) || !/^[1-9]\d{0,11}$/.test(String(body.amount))) return json({ error: 'Invalid relay request.' }, 400);
         const jobStub = env.RELAY_JOBS.get(env.RELAY_JOBS.idFromName(body.quoteId));
         const quote = await (await jobStub.fetch('https://relay/job')).json();
-        if (quote.status !== 'quoted' || quote.expiresAt < Date.now() || quote.owner.toLowerCase() !== body.owner.toLowerCase() || quote.amount !== String(body.amount)) return json({ error: 'Quote expired or does not match this wallet and amount.' }, 409);
+        if (quote.status !== 'quoted' || quote.expiresAt < Date.now() || quote.owner.toLowerCase() !== body.owner.toLowerCase() || quote.amount !== String(body.amount) || (quote.asset || 'usdt') !== assetId) return json({ error: 'Quote expired or does not match this wallet, asset, and amount.' }, 409);
         const { account, publicClient } = clients(env);
-        const nonce = await publicClient.readContract({ address: USDT, abi: usdtAbi, functionName: 'nonces', args: [body.owner] });
-        if (BigInt(body.permit.nonce) !== nonce || Number(body.permit.deadline) < Math.floor(Date.now() / 1000) || Number(body.permit.deadline) > Math.floor(Date.now() / 1000) + 1300) return json({ error: 'USDT permit is expired or has a different nonce.' }, 400);
-        const call = { account, address: POOL, abi: poolAbi, functionName: 'supplyWithPermit', args: [USDT, BigInt(body.amount), body.owner, 0, BigInt(body.permit.deadline), Number(body.permit.v), body.permit.r, body.permit.s] };
+        const nonce = await publicClient.readContract({ address: asset.address, abi: usdtAbi, functionName: 'nonces', args: [body.owner] });
+        if (BigInt(body.permit.nonce) !== nonce || Number(body.permit.deadline) < Math.floor(Date.now() / 1000) || Number(body.permit.deadline) > Math.floor(Date.now() / 1000) + 1300) return json({ error: `${asset.symbol} permit is expired or has a different nonce.` }, 400);
+        const call = { account, address: POOL, abi: poolAbi, functionName: 'supplyWithPermit', args: [asset.address, BigInt(body.amount), body.owner, 0, BigInt(body.permit.deadline), Number(body.permit.v), body.permit.r, body.permit.s] };
         await publicClient.simulateContract(call);
         const [gas, gasPrice, balance] = await Promise.all([
           publicClient.estimateContractGas(call), publicClient.getGasPrice(), publicClient.getBalance({ address: account.address }),
@@ -186,7 +245,9 @@ export default {
         await jobStub.fetch('https://relay/job', { method: 'PUT', body: JSON.stringify(paid) });
         const { account, publicClient, walletClient } = clients(env);
         try {
-          const hash = await walletClient.writeContract({ address: POOL, abi: poolAbi, functionName: 'supplyWithPermit', args: [USDT, BigInt(quote.amount), quote.owner, 0, BigInt(quote.permit.deadline), Number(quote.permit.v), quote.permit.r, quote.permit.s] });
+          const asset = TOKENS[quote.asset || 'usdt'];
+          if (!asset) throw new Error('Quoted token is unsupported.');
+          const hash = await walletClient.writeContract({ address: POOL, abi: poolAbi, functionName: 'supplyWithPermit', args: [asset.address, BigInt(quote.amount), quote.owner, 0, BigInt(quote.permit.deadline), Number(quote.permit.v), quote.permit.r, quote.permit.s] });
           await jobStub.fetch('https://relay/job', { method: 'PUT', body: JSON.stringify({ ...paid, status: 'submitted', polygonTxHash: hash }) });
           const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 }).catch(() => null);
           const result = receipt?.status === 'success' ? { ...paid, status: 'complete', polygonTxHash: hash } : receipt?.status === 'reverted' ? { ...paid, status: 'refund_review', polygonTxHash: hash } : { ...paid, status: 'pending', polygonTxHash: hash };

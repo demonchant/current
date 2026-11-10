@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#07102a" />
-    <meta name="description" content="View the live Aave V3 Polygon USDT market and manage your own position through Nimiq Pay." />
-    <title>Current — USDT, earning on Aave</title>
+    <meta name="description" content="View native USDC and USDT0 on Aave V3 Polygon and manage your positions through Nimiq Pay." />
+    <title>Current — USDC and USDT, earning on Aave</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/styles.css" />
@@ -47,7 +47,7 @@
           <div class="rate-card-head">
             <div>
               <p class="card-overline" id="rate-title">CURRENT SUPPLY RATE</p>
-              <p class="rate-subline">Aave V3 · USDT on Polygon</p>
+              <p class="rate-subline" id="rate-subline">Aave V3 · USDT0 on Polygon</p>
             </div>
             <span class="live-badge" id="market-state"><span class="live-dot" aria-hidden="true"></span><span>Connecting</span></span>
           </div>
@@ -68,7 +68,7 @@
             <div class="section-heading">
               <div>
                 <p class="card-overline">YOUR POSITION</p>
-                <h2>USDT supplied</h2>
+                <h2 id="position-heading">USDT supplied</h2>
               </div>
               <span class="network-chip"><span class="polygon-glyph" aria-hidden="true">◉</span> Polygon</span>
             </div>
@@ -78,7 +78,7 @@
               <div><span>Scaled principal basis</span><strong id="position-principal">—</strong></div>
               <div><span>Accrued interest · est.</span><strong id="position-interest">—</strong></div>
             </div>
-            <p class="position-note">Estimate uses Aave’s scaled aUSDT balance; aUSDT transfers can affect the principal basis.</p>
+            <p class="position-note" id="position-note">Estimate uses Aave’s scaled aUSDT balance; aUSDT transfers can affect the principal basis.</p>
             <div class="position-foot">
               <span class="asset-chip"><span class="usdt-glyph" aria-hidden="true">₮</span> USDT</span>
               <span class="position-change" id="position-status">Your balance stays yours</span>
@@ -88,10 +88,10 @@
 
           <section class="goal-card" id="savings-goal" aria-labelledby="goal-title">
             <div class="goal-heading"><div><p class="card-overline">A REASON TO RETURN</p><h2 id="goal-title">Your savings goal</h2></div><span class="goal-mark" aria-hidden="true">↗</span></div>
-            <p class="goal-intro">Set a USDT target and date. Track your actual aUSDT position over time. Your goal stays on this device.</p>
+            <p class="goal-intro" id="goal-intro">Set a USDT target and date. Sign a wallet message to save and follow the goal across devices.</p>
             <form id="goal-form" novalidate>
-              <label class="goal-label" for="goal-target">Target amount <span>USDT</span></label>
-              <div class="goal-input-wrap"><input id="goal-target" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 100" aria-describedby="goal-status" /><span>USDT</span></div>
+              <label class="goal-label" for="goal-target">Target amount <span id="goal-target-label">USDT</span></label>
+              <div class="goal-input-wrap"><input id="goal-target" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 100 USDT" aria-describedby="goal-status" /><span id="goal-target-suffix">USDT</span></div>
               <label class="goal-label" for="goal-date">Target date</label><input class="goal-date" id="goal-date" type="date" aria-describedby="goal-status" />
               <div class="goal-buttons"><button class="goal-save" type="submit" id="goal-save">Save goal</button><button class="goal-clear" type="button" id="goal-clear" hidden>Clear</button></div>
             </form>
@@ -138,10 +138,10 @@
               </svg>
               <div class="rate-history-foot"><span id="rate-history-range">History builds as rates are refreshed</span><span>APY · %</span></div>
             </div>
-            <label class="yield-amount-label" for="estimate-principal">Amount to explore <span>USDT</span></label>
+            <label class="yield-amount-label" for="estimate-principal">Amount to explore <span id="yield-label-suffix">USDT</span></label>
             <div class="yield-amount-entry">
               <input id="estimate-principal" type="text" inputmode="decimal" autocomplete="off" placeholder="Enter an amount" aria-describedby="yield-estimate-status yield-estimate-caveat" />
-              <span>USDT</span>
+              <span id="yield-unit-suffix">USDT</span>
             </div>
             <div class="yield-results" aria-live="polite" aria-atomic="true">
               <div><span>After 30 days</span><strong id="estimate-30">—</strong></div>
@@ -162,6 +162,10 @@
             <span class="lock-mark" aria-label="Wallet actions stay in your hands">⌑</span>
           </div>
 
+          <div class="asset-switch" role="group" aria-label="Choose a Polygon stablecoin">
+            <button class="asset-option is-active" id="asset-usdt" type="button" aria-pressed="true">USDT0</button>
+            <button class="asset-option" id="asset-usdc" type="button" aria-pressed="false">USDC</button>
+          </div>
           <div class="mode-switch" role="tablist" aria-label="Choose an action">
             <button class="mode-button is-active" id="tab-supply" type="button" role="tab" aria-selected="true" aria-controls="action-form" data-mode="supply">Supply</button>
             <button class="mode-button" id="tab-withdraw" type="button" role="tab" aria-selected="false" aria-controls="action-form" data-mode="withdraw" disabled>Withdraw</button>
@@ -171,7 +175,7 @@
             <label class="amount-label" for="amount-input"><span id="amount-label">Amount to supply</span><span class="available" id="available-label">Balance unavailable</span></label>
             <div class="amount-entry">
               <input id="amount-input" name="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" aria-describedby="amount-hint form-error" disabled />
-              <span class="input-token">USDT</span>
+              <span class="input-token" id="amount-token-label">USDT</span>
               <button class="max-button" id="max-button" type="button" disabled>Max</button>
             </div>
             <p class="field-hint" id="amount-hint">Amounts use up to 6 decimal places.</p>
@@ -207,7 +211,7 @@
         <div class="risk-mark" aria-hidden="true">i</div>
         <div>
           <h2 id="risk-title">A few things to know</h2>
-          <p>Supply APY changes and is not promised. Supplying USDT involves stablecoin, smart contract, network and liquidity risks. A withdrawal can depend on available liquidity. Polygon transactions need POL for gas. Current never holds funds or asks for your seed phrase.</p>
+          <p id="asset-risk-copy">Supply APY changes and is not promised. Supplying USDT or USDC involves stablecoin, smart contract, network and liquidity risks. A withdrawal can depend on available liquidity. Polygon transactions need POL for gas. Current never holds funds or asks for your seed phrase.</p>
         </div>
         <a href="https://www.aave.com/docs/aave-v3/overview" target="_blank" rel="noreferrer">Aave protocol risks <span aria-hidden="true">↗</span></a>
       </section>
@@ -242,7 +246,7 @@
       <p class="dialog-intro" id="dialog-intro">Check the destination and amount before opening your wallet.</p>
       <div class="dialog-amount"><span id="dialog-action">Supply</span><strong id="dialog-amount">—</strong></div>
       <dl class="dialog-details">
-        <div><dt>Asset</dt><dd>USDT · Polygon</dd></div>
+        <div><dt>Asset</dt><dd id="transaction-asset">USDT · Polygon</dd></div>
         <div><dt>Protocol</dt><dd>Aave V3</dd></div>
         <div><dt>Transaction target</dt><dd id="transaction-target">Aave V3 Polygon pool</dd></div>
         <div id="network-gas-row"><dt>Network gas</dt><dd>POL · paid from your wallet</dd></div>

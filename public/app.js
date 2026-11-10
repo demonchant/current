@@ -1,11 +1,9 @@
 import {
   AAVE_GRAPHQL,
-  AAVE_V3_POLYGON_ATOKEN,
   AAVE_V3_POLYGON_POOL,
+  ASSETS,
   CHAIN_ID,
   POLYGON_HEX_CHAIN_ID,
-  TOKEN_DECIMALS,
-  USDT_ADDRESS,
   amountFromInput,
   encodeAllowance,
   encodeBalanceOf,
@@ -13,6 +11,7 @@ import {
   estimateSimpleYield,
   expectedBalanceDelta,
   formatTokenAmount,
+  getAsset,
   isAddress,
   parseTokenAmount,
   prepareExactApprovalTransaction,
@@ -39,7 +38,9 @@ const state = {
   fx: null,
   fxError: false,
   walletReturnSnapshot: null,
+  savedGoals: {},
   walletDismissed: wasWalletDismissed(),
+  assetId: 'usdt',
   mode: 'supply',
   gqlBusy: false,
   pendingAction: null,
@@ -47,11 +48,14 @@ const state = {
   toastTimer: null,
 };
 
+function currentAsset() { return getAsset(state.assetId); }
+function rateHistoryKey() { return state.assetId === 'usdt' ? RATE_HISTORY_KEY : `${RATE_HISTORY_KEY}:${state.assetId}`; }
+
 const nairaFormatter = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 });
 
 function formatNaira(rawUsdt) {
   if (!state.fx || rawUsdt === null || rawUsdt === undefined) return 'Unavailable';
-  const usdValue = Number(BigInt(rawUsdt)) / (10 ** TOKEN_DECIMALS);
+  const usdValue = Number(BigInt(rawUsdt)) / (10 ** currentAsset().decimals);
   const nairaValue = usdValue * state.fx.rate;
   return Number.isFinite(nairaValue) ? nairaFormatter.format(nairaValue) : 'Unavailable';
 }
@@ -75,7 +79,7 @@ function renderNairaDisplays() {
     const updated = new Date(fx.updatedAt * 1000);
     const ageHours = (Date.now() - fx.updatedAt * 1000) / 3_600_000;
     const freshness = ageHours > 48 ? ' · rate is stale' : '';
-    $('fx-rate-note').innerHTML = `Indicative only · USDT treated as ≈$1 · updated ${updated.toLocaleDateString('en-NG')} UTC${freshness}. <a href="https://www.exchangerate-api.com" target="_blank" rel="noreferrer">Rates by ExchangeRate-API</a>`;
+    $('fx-rate-note').innerHTML = `Indicative only · ${currentAsset().symbol} treated as ≈$1 · updated ${updated.toLocaleDateString('en-NG')} UTC${freshness}. <a href="https://www.exchangerate-api.com" target="_blank" rel="noreferrer">Rates by ExchangeRate-API</a>`;
   }
   $('position-naira').textContent = state.walletData
     ? `Approx. ${formatNaira(state.walletData.aTokenBalance)} · indicative USD/NGN conversion`
@@ -147,16 +151,31 @@ async function gql(query, timeoutMs = 12000) {
   }
 }
 
-function findUsdtReserve(market) {
+function verifyMarketIdentity(market) {
   if (!market || market.address?.toLowerCase() !== AAVE_V3_POLYGON_POOL.toLowerCase() || Number(market.chain?.chainId) !== CHAIN_ID) {
     throw new Error('Aave V3 Polygon did not match the verified market address. Transactions are disabled.');
   }
-  const reserve = market.reserves?.find((item) => item.underlyingToken?.address?.toLowerCase() === USDT_ADDRESS.toLowerCase());
-  if (!reserve || Number(reserve.underlyingToken.decimals) !== TOKEN_DECIMALS ||
-      reserve.aToken?.address?.toLowerCase() !== AAVE_V3_POLYGON_ATOKEN.toLowerCase()) {
-    throw new Error('The live Aave USDT reserve did not match the verified Polygon USDT and aUSDT contracts. Transactions are disabled.');
+}
+
+function findAssetReserve(market, asset = currentAsset()) {
+  verifyMarketIdentity(market);
+  const reserve = market.reserves?.find((item) => item.underlyingToken?.address?.toLowerCase() === asset.address.toLowerCase());
+  if (!reserve || Number(reserve.underlyingToken.decimals) !== asset.decimals ||
+      reserve.aToken?.address?.toLowerCase() !== asset.aToken.toLowerCase()) {
+    throw new Error(`The live Aave ${asset.symbol} reserve did not match the verified Polygon ${asset.symbol} and ${asset.aTokenSymbol} contracts. Transactions are disabled.`);
   }
   return reserve;
+}
+
+function setSelectedReserve() {
+  if (!state.market) return;
+  try {
+    state.market.reserve = findAssetReserve(state.market);
+    state.market.reserveError = null;
+  } catch (error) {
+    state.market.reserve = null;
+    state.market.reserveError = error.message;
+  }
 }
 
 function setMarketBusy(busy) {
@@ -182,9 +201,9 @@ async function loadMarket({ announce = false } = {}) {
   try {
     const data = await gql(MARKET_QUERY);
     const market = data.market;
-    const reserve = findUsdtReserve(market);
-    state.market = { ...market, reserve, fetchedAt: new Date() };
-    recordRateSnapshot(Number(reserve.supplyInfo?.apy?.formatted));
+    verifyMarketIdentity(market);
+    state.market = { ...market, fetchedAt: new Date() };
+    setSelectedReserve();
     renderMarket();
     if (announce) showToast('Live Aave rate updated.');
     if (state.wallet) await refreshWallet();
@@ -210,6 +229,22 @@ async function loadMarket({ announce = false } = {}) {
 
 function renderMarket() {
   const { reserve, fetchedAt } = state.market;
+  if (!reserve) {
+    $('apy-value').className = 'rate-value is-error';
+    $('apy-value').removeAttribute('aria-busy');
+    $('apy-value').textContent = 'Rate unavailable';
+    $('market-state').className = 'live-badge is-error';
+    $('market-state').innerHTML = '<span class="live-dot" aria-hidden="true"></span><span>Unavailable</span>';
+    $('reserve-status').textContent = `${currentAsset().symbol} reserve unavailable`;
+    $('freshness').textContent = `Aave market data was checked ${fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, but this asset reserve could not be verified.`;
+    $('market-data-note').textContent = 'Selected reserve unavailable';
+    $('market-error').textContent = cleanCopy(state.market.reserveError || 'The selected Aave reserve is unavailable.');
+    $('market-error').hidden = false;
+    window.dispatchEvent(new CustomEvent('current:rate', { detail: { error: true, assetId: state.assetId } }));
+    renderWalletControls();
+    renderYieldLens();
+    return;
+  }
   const paused = reserve.isPaused || reserve.isFrozen || reserve.supplyInfo?.supplyCapReached;
   const rate = reserve.supplyInfo?.apy?.formatted;
   if (typeof rate !== 'string' || !/^\d+(?:\.\d+)?$/.test(rate)) throw new Error('Aave returned an invalid supply rate.');
@@ -221,7 +256,8 @@ function renderMarket() {
   $('reserve-status').textContent = reserve.isPaused ? 'Paused by protocol' : reserve.isFrozen ? 'Frozen by protocol' : reserve.supplyInfo?.supplyCapReached ? 'Supply cap reached' : 'Open for supply';
   $('freshness').textContent = `Aave V3 market API · fetched ${fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. APY may change; API indexing delay is possible.`;
   $('market-data-note').textContent = paused ? 'Live data · supply currently unavailable' : 'Live Aave market data';
-  window.dispatchEvent(new CustomEvent('current:rate', { detail: { value: `${rate}%`, source: 'Current Aave market rate' } }));
+  recordRateSnapshot(Number(rate));
+  window.dispatchEvent(new CustomEvent('current:rate', { detail: { value: `${rate}%`, source: `Current ${currentAsset().symbol} Aave rate`, assetId: state.assetId } }));
   $('market-error').hidden = true;
   renderRateHistory(rate);
   renderWalletControls();
@@ -230,7 +266,7 @@ function renderMarket() {
 
 function readRateHistory() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(RATE_HISTORY_KEY) || '[]');
+    const parsed = JSON.parse(localStorage.getItem(rateHistoryKey()) || '[]');
     return Array.isArray(parsed) ? parsed.filter((entry) => Number.isFinite(entry.t) && Number.isFinite(entry.r)) : [];
   } catch { return []; }
 }
@@ -244,7 +280,7 @@ function recordRateSnapshot(rate) {
     if (last && now - last.t < 60_000) return;
     history.push({ t: now, r: rate });
     const cutoff = now - 30 * 24 * 60 * 60 * 1000;
-    localStorage.setItem(RATE_HISTORY_KEY, JSON.stringify(history.filter((entry) => entry.t >= cutoff).slice(-720)));
+    localStorage.setItem(rateHistoryKey(), JSON.stringify(history.filter((entry) => entry.t >= cutoff).slice(-720)));
   } catch { /* Rate chart history is best-effort browser-local data. */ }
 }
 
@@ -267,19 +303,7 @@ function renderRateHistory(currentRate) {
     : `${firstSeen.toLocaleDateString()} – ${new Date(history.at(-1).t).toLocaleDateString()} · ${history.length} observations`;
 }
 
-function goalStorageKey() {
-  return state.wallet ? `current.savings-goal.v1:${state.wallet.toLowerCase()}` : null;
-}
-
-function readSavingsGoal() {
-  const key = goalStorageKey();
-  if (!key) return null;
-  try {
-    const goal = JSON.parse(localStorage.getItem(key) || 'null');
-    if (goal && /^\d+$/.test(String(goal.targetRaw)) && /^\d{4}-\d{2}-\d{2}$/.test(goal.date) && BigInt(goal.targetRaw) > 0n && BigInt(goal.targetRaw) < 2n ** 256n) return goal;
-  } catch { /* Goal storage is optional and stays on this device. */ }
-  return null;
-}
+function readSavingsGoal() { return state.savedGoals[state.assetId] || null; }
 
 function renderSavingsGoal() {
   const targetInput = $('goal-target');
@@ -292,25 +316,25 @@ function renderSavingsGoal() {
   $('goal-clear').hidden = !goal;
   $('goal-progress-wrap').hidden = !goal;
   if (goal) {
-    targetInput.value = formatTokenAmount(BigInt(goal.targetRaw));
+    targetInput.value = formatTokenAmount(BigInt(goal.targetRaw), currentAsset().decimals);
     $('goal-date').value = goal.date;
   } else if (!state.wallet) {
     targetInput.value = '';
     $('goal-date').value = '';
   }
   if (!goal) {
-    $('goal-status').textContent = state.wallet ? 'Choose a target and date. This goal is saved only in this browser for this wallet.' : 'Connect a wallet to create a private, device-saved goal.';
+    $('goal-status').textContent = state.wallet ? 'Choose a target and date. Sign a wallet message to save it to Current across devices.' : 'Connect a wallet to create a wallet-linked goal.';
     $('goal-progress-copy').textContent = connected ? 'Save a goal to start tracking this position.' : 'Connect your wallet to track progress.';
     $('goal-projection').textContent = '';
     return;
   }
-  $('goal-status').textContent = connected ? 'Progress uses the live aUSDT balance read from Polygon.' : 'Goal saved on this device. Connect this wallet on Polygon to refresh progress.';
+  $('goal-status').textContent = connected ? `Progress uses the live ${currentAsset().aTokenSymbol} balance read from Polygon.` : 'Goal saved with Current. Connect this wallet on Polygon to refresh progress.';
   if (!connected) {
     $('goal-progress-copy').textContent = 'Connect this wallet on Polygon to refresh progress.';
     $('goal-progress-percent').textContent = '—';
     $('goal-progress-track').setAttribute('aria-valuenow', '0');
     $('goal-progress-fill').style.width = '0%';
-    $('goal-projection').textContent = 'Your goal stays saved for this wallet on this device.';
+    $('goal-projection').textContent = 'Your goal is stored with Current and linked to this wallet address.';
     return;
   }
   const target = BigInt(goal.targetRaw);
@@ -334,31 +358,87 @@ function renderSavingsGoal() {
     const gap = target > estimate ? target - estimate : 0n;
     $('goal-projection').textContent = `At today’s ${apy}% APY, the position could be about ${formatTokenAmount(estimate)} USDT (${formatNaira(estimate)}) by then if the rate stayed unchanged. ${gap ? `Illustrative gap: ${formatTokenAmount(gap)} USDT (${formatNaira(gap)}).` : 'That projection reaches your target.'} Variable rates can change; this is not guaranteed.`;
   }
+  $('goal-progress-copy').textContent = $('goal-progress-copy').textContent.replaceAll(' USDT', ` ${currentAsset().symbol}`);
+  $('goal-projection').textContent = $('goal-projection').textContent.replaceAll(' USDT', ` ${currentAsset().symbol}`);
 }
 
-function saveSavingsGoal(event) {
-  event.preventDefault();
-  const key = goalStorageKey();
-  if (!key) { $('goal-status').textContent = 'Connect a wallet before saving a goal.'; return; }
+function goalSigningMessage({ owner, nonce, action, asset, targetRaw = '', date = '' }) {
+  return `Current savings goal ${action}\nWallet: ${owner.toLowerCase()}\nNonce: ${nonce}\nAsset: ${asset}\nTarget raw: ${targetRaw}\nTarget date: ${date}`;
+}
+
+async function requestGoalAccess(action, goal = {}) {
+  if (!state.wallet) throw new Error('Connect your wallet to access its saved goal.');
+  const owner = state.wallet;
+  await recheckBeforeWrite();
+  const asset = currentAsset();
+  const nonceResponse = await fetch('/api/goals/nonce', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ owner }), cache: 'no-store',
+  });
+  const nonceBody = await nonceResponse.json();
+  if (!nonceResponse.ok) throw new Error(nonceBody.error || 'Could not start wallet authorization.');
+  const targetRaw = action === 'save' ? String(goal.targetRaw) : '';
+  const date = action === 'save' ? String(goal.date) : '';
+  const message = goalSigningMessage({ owner, nonce: nonceBody.nonce, action, asset: asset.id, targetRaw, date });
+  const hexMessage = `0x${[...new TextEncoder().encode(message)].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+  const signature = await provider().request({ method: 'personal_sign', params: [hexMessage, owner] });
+  await recheckBeforeWrite();
+  if (state.wallet?.toLowerCase() !== owner.toLowerCase() || state.assetId !== asset.id) throw new Error('Wallet or asset changed during goal authorization. Please retry.');
+  const response = await fetch('/api/goals/access', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, cache: 'no-store',
+    body: JSON.stringify({ owner, nonce: nonceBody.nonce, action, asset: asset.id, targetRaw, date, signature }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Could not access the saved goal.');
+  return data.goal;
+}
+
+async function loadSavingsGoal() {
+  if (!state.wallet) { state.savedGoals = {}; renderSavingsGoal(); return; }
+  const assetId = state.assetId;
+  $('goal-status').textContent = 'Sign a read-only wallet message to load this goal across your devices.';
   try {
-    const targetRaw = parseTokenAmount($('goal-target').value);
+    const goal = await requestGoalAccess('read');
+    if (state.assetId !== assetId) return;
+    if (goal && /^\d+$/.test(String(goal.targetRaw)) && /^\d{4}-\d{2}-\d{2}$/.test(goal.date)) state.savedGoals[assetId] = goal;
+    else delete state.savedGoals[assetId];
+    renderSavingsGoal();
+    if (!goal) $('goal-status').textContent = 'No saved goal for this asset and wallet yet.';
+  } catch (error) {
+    if (state.assetId === assetId) $('goal-status').textContent = cleanCopy(error.message || 'Could not load the saved goal.');
+  }
+}
+
+async function saveSavingsGoal(event) {
+  event.preventDefault();
+  if (!state.wallet) { $('goal-status').textContent = 'Connect a wallet before saving a goal.'; return; }
+  try {
+    const targetRaw = parseTokenAmount($('goal-target').value, currentAsset().decimals);
     const date = $('goal-date').value;
     const dateTime = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T23:59:59`).getTime() : NaN;
     if (!Number.isFinite(dateTime)) throw new Error('Choose a valid target date.');
     if (dateTime <= Date.now()) throw new Error('Choose a future target date.');
-    localStorage.setItem(key, JSON.stringify({ targetRaw: targetRaw.toString(), date }));
+    $('goal-save').disabled = true;
+    const goal = await requestGoalAccess('save', { targetRaw: targetRaw.toString(), date });
+    state.savedGoals[state.assetId] = goal;
     renderSavingsGoal();
-    $('goal-status').textContent = 'Goal saved on this device for this wallet.';
-  } catch (error) { $('goal-status').textContent = cleanCopy(error.message || 'Could not save this goal on this device.'); }
+    $('goal-status').textContent = 'Goal saved to Current and linked to this wallet.';
+  } catch (error) { $('goal-status').textContent = cleanCopy(error.message || 'Could not save this goal.'); }
+  finally { $('goal-save').disabled = !state.wallet; }
 }
 
-function clearSavingsGoal() {
-  const key = goalStorageKey();
-  if (!key) return;
-  try { localStorage.removeItem(key); } catch { $('goal-status').textContent = 'This browser could not clear the saved goal.'; return; }
-  $('goal-target').value = '';
-  $('goal-date').value = '';
-  renderSavingsGoal();
+async function clearSavingsGoal() {
+  if (!state.wallet) return;
+  $('goal-clear').disabled = true;
+  try {
+    await requestGoalAccess('delete');
+    delete state.savedGoals[state.assetId];
+    $('goal-target').value = '';
+    $('goal-date').value = '';
+    renderSavingsGoal();
+    $('goal-status').textContent = 'Saved goal removed from Current for this wallet.';
+  } catch (error) { $('goal-status').textContent = cleanCopy(error.message || 'Could not remove the saved goal.'); }
+  finally { $('goal-clear').disabled = !state.wallet; }
 }
 
 function renderYieldLens() {
@@ -383,12 +463,12 @@ function renderYieldLens() {
     return;
   }
   try {
-    const principal = parseTokenAmount(amount);
+    const principal = parseTokenAmount(amount, currentAsset().decimals);
     const apy = state.market.reserve.supplyInfo.apy.formatted;
     state.yield30 = estimateSimpleYield(principal, apy, 30);
     state.yield365 = estimateSimpleYield(principal, apy, 365);
-    $('estimate-30').textContent = `${formatTokenAmount(state.yield30)} USDT`;
-    $('estimate-365').textContent = `${formatTokenAmount(state.yield365)} USDT`;
+    $('estimate-30').textContent = `${formatTokenAmount(state.yield30, currentAsset().decimals)} ${currentAsset().symbol}`;
+    $('estimate-365').textContent = `${formatTokenAmount(state.yield365, currentAsset().decimals)} ${currentAsset().symbol}`;
     $('estimate-30-naira').textContent = formatNaira(state.yield30);
     $('estimate-365-naira').textContent = formatNaira(state.yield365);
     $('yield-estimate-status').textContent = `Illustrative gross estimate at the live ${apy}% APY, fetched with the Aave market data above.`;
@@ -439,6 +519,7 @@ async function connectWallet() {
     const accounts = await injected.request({ method: 'eth_requestAccounts' });
     if (!Array.isArray(accounts) || !isAddress(accounts[0])) throw new Error('Nimiq Pay did not return a valid EVM account.');
     state.wallet = accounts[0];
+    state.savedGoals = {};
     const chain = await injected.request({ method: 'eth_chainId' });
     renderWalletHeader();
     renderSavingsGoal();
@@ -451,6 +532,7 @@ async function connectWallet() {
       return;
     }
     await refreshWallet();
+    void loadSavingsGoal();
     renderWalletControls();
     showToast(`Connected ${shortAddress(state.wallet)} through the wallet provider.`);
   } catch (error) {
@@ -473,6 +555,7 @@ async function switchToPolygon() {
     const chain = await injected.request({ method: 'eth_chainId' });
     if (Number.parseInt(chain, 16) !== CHAIN_ID) throw new Error('The wallet is still on a different network.');
     await refreshWallet();
+    void loadSavingsGoal();
     showToast('Polygon is connected. Review the live position before taking action.');
   } catch (error) {
     if (isUserRejected(error)) {
@@ -493,34 +576,42 @@ async function ethCall(to, data) {
   return BigInt(result);
 }
 
-async function readTokenNameForPermit() {
-  const raw = await provider().request({ method: 'eth_call', params: [{ to: USDT_ADDRESS, data: '0x06fdde03' }, 'latest'] });
-  if (typeof raw !== 'string' || !/^0x[0-9a-fA-F]+$/.test(raw) || raw.length < 130) throw new Error('USDT returned an invalid permit name. No transaction was sent.');
+async function readTokenNameForPermit(asset = currentAsset()) {
+  const raw = await provider().request({ method: 'eth_call', params: [{ to: asset.address, data: '0x06fdde03' }, 'latest'] });
+  if (typeof raw !== 'string' || !/^0x[0-9a-fA-F]+$/.test(raw) || raw.length < 130) throw new Error(`${asset.symbol} returned an invalid permit name. No transaction was sent.`);
   const data = raw.slice(2);
   const offset = Number(BigInt(`0x${data.slice(0, 64)}`));
-  if (!Number.isSafeInteger(offset) || offset < 32 || offset * 2 + 64 > data.length) throw new Error('USDT permit name data was malformed. No transaction was sent.');
+  if (!Number.isSafeInteger(offset) || offset < 32 || offset * 2 + 64 > data.length) throw new Error(`${asset.symbol} permit name data was malformed. No transaction was sent.`);
   const start = offset * 2;
   const length = Number(BigInt(`0x${data.slice(start, start + 64)}`));
   const hex = data.slice(start + 64, start + 64 + length * 2);
-  if (!Number.isSafeInteger(length) || length < 1 || hex.length !== length * 2) throw new Error('USDT permit name data was incomplete. No transaction was sent.');
+  if (!Number.isSafeInteger(length) || length < 1 || hex.length !== length * 2) throw new Error(`${asset.symbol} permit name data was incomplete. No transaction was sent.`);
   try { return new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(hex.match(/.{2}/g), (byte) => Number.parseInt(byte, 16))); }
-  catch { throw new Error('USDT permit name was not valid UTF-8. No transaction was sent.'); }
+  catch { throw new Error(`${asset.symbol} permit name was not valid UTF-8. No transaction was sent.`); }
 }
 
-async function signSupplyPermit(amount) {
+async function signSupplyPermit(amount, asset = currentAsset()) {
   const injected = provider();
   const deadline = Math.floor(Date.now() / 1000) + 1200;
   const [name, nonce] = await Promise.all([
-    readTokenNameForPermit(),
-    ethCall(USDT_ADDRESS, encodePermitNonce(state.wallet)),
+    readTokenNameForPermit(asset),
+    ethCall(asset.address, encodePermitNonce(state.wallet)),
   ]);
+  const domain = asset.permitDomain === 'salt'
+    ? { name, version: asset.permitVersion, verifyingContract: asset.address, salt: `0x${CHAIN_ID.toString(16).padStart(64, '0')}` }
+    : { name, version: asset.permitVersion, chainId: CHAIN_ID, verifyingContract: asset.address };
   const typedData = {
     types: {
-      EIP712Domain: [
+      EIP712Domain: asset.permitDomain === 'salt' ? [
         { name: 'name', type: 'string' },
         { name: 'version', type: 'string' },
         { name: 'verifyingContract', type: 'address' },
         { name: 'salt', type: 'bytes32' },
+      ] : [
+        { name: 'name', type: 'string' },
+        { name: 'version', type: 'string' },
+        { name: 'chainId', type: 'uint256' },
+        { name: 'verifyingContract', type: 'address' },
       ],
       Permit: [
         { name: 'owner', type: 'address' },
@@ -531,12 +622,7 @@ async function signSupplyPermit(amount) {
       ],
     },
     primaryType: 'Permit',
-    domain: {
-      name,
-      version: '1',
-      verifyingContract: USDT_ADDRESS,
-      salt: `0x${CHAIN_ID.toString(16).padStart(64, '0')}`,
-    },
+    domain,
     message: {
       owner: state.wallet,
       spender: AAVE_V3_POLYGON_POOL,
@@ -556,7 +642,7 @@ async function signSupplyPermit(amount) {
   return { deadline, nonce, v, r: `0x${r}`, s: `0x${s}` };
 }
 
-function makeSupplyWithPermitTransaction(amount, permit) {
+function makeSupplyWithPermitTransaction(amount, permit, asset = currentAsset()) {
   const addressWord = (address) => address.slice(2).toLowerCase().padStart(64, '0');
   const uintWord = (value) => BigInt(value).toString(16).padStart(64, '0');
   return {
@@ -564,17 +650,20 @@ function makeSupplyWithPermitTransaction(amount, permit) {
     to: AAVE_V3_POLYGON_POOL,
     chainId: CHAIN_ID,
     value: '0x0',
-    data: `0x02c205f0${addressWord(USDT_ADDRESS)}${uintWord(amount)}${addressWord(state.wallet)}${uintWord(0)}${uintWord(permit.deadline)}${uintWord(permit.v)}${permit.r.slice(2)}${permit.s.slice(2)}`,
+    data: `0x02c205f0${addressWord(asset.address)}${uintWord(amount)}${addressWord(state.wallet)}${uintWord(0)}${uintWord(permit.deadline)}${uintWord(permit.v)}${permit.r.slice(2)}${permit.s.slice(2)}`,
   };
 }
 
 async function refreshWallet() {
   const injected = provider();
   if (!injected || !state.wallet) return;
+  const asset = currentAsset();
+  const assetId = state.assetId;
   const [accounts, chain] = await Promise.all([
     injected.request({ method: 'eth_accounts' }),
     injected.request({ method: 'eth_chainId' }),
   ]);
+  if (state.assetId !== assetId) return;
   if (!Array.isArray(accounts) || !accounts[0] || accounts[0].toLowerCase() !== state.wallet.toLowerCase()) {
     state.wallet = Array.isArray(accounts) && isAddress(accounts[0]) ? accounts[0] : null;
     state.walletData = null;
@@ -597,18 +686,19 @@ async function refreshWallet() {
     return;
   }
   const [tokenBalance, aTokenBalance, allowance, nativeBalance, scaledBalance] = await Promise.all([
-    ethCall(USDT_ADDRESS, encodeBalanceOf(state.wallet)),
-    ethCall(AAVE_V3_POLYGON_ATOKEN, encodeBalanceOf(state.wallet)),
-    ethCall(USDT_ADDRESS, encodeAllowance(state.wallet, AAVE_V3_POLYGON_POOL)),
+    ethCall(asset.address, encodeBalanceOf(state.wallet)),
+    ethCall(asset.aToken, encodeBalanceOf(state.wallet)),
+    ethCall(asset.address, encodeAllowance(state.wallet, AAVE_V3_POLYGON_POOL)),
     injected.request({ method: 'eth_getBalance', params: [state.wallet, 'latest'] }).then(BigInt),
-    ethCall(AAVE_V3_POLYGON_ATOKEN, `0x1da24f3e${state.wallet.slice(2).toLowerCase().padStart(64, '0')}`).catch(() => null),
+    ethCall(asset.aToken, `0x1da24f3e${state.wallet.slice(2).toLowerCase().padStart(64, '0')}`).catch(() => null),
   ]);
+  if (state.assetId !== assetId) return;
   state.walletData = { tokenBalance, aTokenBalance, allowance, nativeBalance, scaledBalance, fetchedAt: new Date() };
   renderWalletHeader();
   renderWalletPosition();
   renderSavingsGoal();
   $('gas-balance').textContent = `${formatTokenAmount(nativeBalance, 18, 5)} POL`;
-  $('available-label').textContent = state.mode === 'supply' ? `${formatTokenAmount(tokenBalance)} USDT available` : `${formatTokenAmount(aTokenBalance)} USDT supplied`;
+  $('available-label').textContent = state.mode === 'supply' ? `${formatTokenAmount(tokenBalance, asset.decimals)} ${asset.symbol} available` : `${formatTokenAmount(aTokenBalance, asset.decimals)} ${asset.symbol} supplied`;
   setWalletMessage('Position read directly from Polygon');
   renderWalletControls();
 }
@@ -638,14 +728,14 @@ function renderWalletPosition() {
     $('position-refreshed').textContent = 'Position not refreshed';
     return;
   }
-  $('position-value').textContent = `${formatTokenAmount(state.walletData.aTokenBalance)} USDT`;
+  $('position-value').textContent = `${formatTokenAmount(state.walletData.aTokenBalance, currentAsset().decimals)} ${currentAsset().symbol}`;
   $('position-naira').textContent = `Approx. ${formatNaira(state.walletData.aTokenBalance)} - indicative USD/NGN conversion`;
   $('position-value').classList.add('has-value');
   if (state.walletData.scaledBalance !== null) {
     const interest = state.walletData.aTokenBalance > state.walletData.scaledBalance
       ? state.walletData.aTokenBalance - state.walletData.scaledBalance : 0n;
-    $('position-principal').textContent = `${formatTokenAmount(state.walletData.scaledBalance)} USDT`;
-    $('position-interest').textContent = `${formatTokenAmount(interest)} USDT`;
+    $('position-principal').textContent = `${formatTokenAmount(state.walletData.scaledBalance, currentAsset().decimals)} ${currentAsset().symbol}`;
+    $('position-interest').textContent = `${formatTokenAmount(interest, currentAsset().decimals)} ${currentAsset().symbol}`;
   } else {
     $('position-principal').textContent = 'Unavailable';
     $('position-interest').textContent = 'Unavailable';
@@ -654,12 +744,12 @@ function renderWalletPosition() {
 }
 
 function marketIsFresh() {
-  return Boolean(state.market && Date.now() - state.market.fetchedAt.getTime() < 60_000 && !state.gqlBusy);
+  return Boolean(state.market?.reserve && Date.now() - state.market.fetchedAt.getTime() < 60_000 && !state.gqlBusy);
 }
 
 function marketAllowsSupply() {
   const reserve = state.market?.reserve;
-  return Boolean(marketIsFresh() && !reserve.isPaused && !reserve.isFrozen && !reserve.supplyInfo?.supplyCapReached);
+  return Boolean(marketIsFresh() && reserve && !reserve.isPaused && !reserve.isFrozen && !reserve.supplyInfo?.supplyCapReached);
 }
 
 function renderWalletControls() {
@@ -668,6 +758,7 @@ function renderWalletControls() {
   const marketFresh = marketIsFresh();
   const actionAvailable = state.mode === 'supply' ? marketAllowsSupply() : marketFresh;
   const input = $('amount-input');
+  for (const asset of Object.values(ASSETS)) $(`asset-${asset.id}`).disabled = state.busy || Boolean(state.pendingAction);
   input.disabled = !onPolygon || state.busy || !actionAvailable;
   $('max-button').disabled = !onPolygon || state.busy || !actionAvailable;
   $('tab-withdraw').disabled = !onPolygon || BigInt(state.walletData?.aTokenBalance ?? 0) === 0n || state.busy;
@@ -721,7 +812,7 @@ async function loadNimRelayStatus() {
 function validAmountForCurrentMode() {
   if (!state.walletData || !state.market) return false;
   try {
-    amountFromInput($('amount-input').value, state.mode, state.walletData.tokenBalance, state.walletData.aTokenBalance);
+    amountFromInput($('amount-input').value, state.mode, state.walletData.tokenBalance, state.walletData.aTokenBalance, currentAsset().decimals, currentAsset().symbol);
     return true;
   } catch { return false; }
 }
@@ -735,8 +826,8 @@ function updateAmountSummary() {
   $('amount-input').placeholder = state.mode === 'supply' ? '0.00' : '0.00';
   if (state.walletData && $('amount-input').value.trim()) {
     try {
-      const raw = amountFromInput($('amount-input').value, state.mode, state.walletData.tokenBalance, state.walletData.aTokenBalance);
-      $('summary-value').textContent = `${formatTokenAmount(raw)} USDT`;
+      const raw = amountFromInput($('amount-input').value, state.mode, state.walletData.tokenBalance, state.walletData.aTokenBalance, currentAsset().decimals, currentAsset().symbol);
+      $('summary-value').textContent = `${formatTokenAmount(raw, currentAsset().decimals)} ${currentAsset().symbol}`;
       $('summary-naira').textContent = formatNaira(raw);
       $('form-error').hidden = true;
     } catch (error) {
@@ -746,7 +837,7 @@ function updateAmountSummary() {
     }
   } else { $('form-error').hidden = true; $('summary-naira').textContent = 'Unavailable'; }
   $('available-label').textContent = state.walletData
-    ? `${formatTokenAmount(state.mode === 'supply' ? state.walletData.tokenBalance : state.walletData.aTokenBalance)} USDT ${state.mode === 'supply' ? 'available' : 'supplied'}`
+    ? `${formatTokenAmount(state.mode === 'supply' ? state.walletData.tokenBalance : state.walletData.aTokenBalance, currentAsset().decimals)} ${currentAsset().symbol} ${state.mode === 'supply' ? 'available' : 'supplied'}`
     : 'Balance unavailable';
   const enough = validAmountForCurrentMode();
   const marketAvailable = state.mode === 'supply' ? marketAllowsSupply() : marketIsFresh();
@@ -764,6 +855,44 @@ function setMode(mode) {
   updateAmountSummary();
   renderWalletControls();
   showToast(`${mode === 'supply' ? 'Supply' : 'Withdrawal'} selected.`, 'info');
+}
+
+function selectAsset(assetId) {
+  if (!ASSETS[assetId] || state.busy || state.pendingAction) return;
+  if (state.assetId === assetId) return;
+  state.assetId = assetId;
+  state.walletData = null;
+  $('amount-input').value = '';
+  for (const asset of Object.values(ASSETS)) {
+    const button = $(`asset-${asset.id}`);
+    button.classList.toggle('is-active', asset.id === assetId);
+    button.setAttribute('aria-pressed', String(asset.id === assetId));
+  }
+  const asset = currentAsset();
+  document.querySelectorAll('[data-asset-label]').forEach((node) => { node.textContent = asset.symbol; });
+  document.querySelectorAll('[data-atoken-label]').forEach((node) => { node.textContent = asset.aTokenSymbol; });
+  $('position-note').textContent = `Estimate uses Aave’s scaled ${asset.aTokenSymbol} balance; ${asset.aTokenSymbol} transfers can affect the principal basis.`;
+  $('goal-intro').textContent = `Set a ${asset.symbol} target and date. Track your ${asset.aTokenSymbol} position across devices after signing a wallet message.`;
+  $('page-title').innerHTML = `Give your ${asset.symbol}<br />room to <em>grow.</em>`;
+  $('rate-subline').textContent = `Aave V3 · ${asset.marketSymbol} on Polygon`;
+  $('position-heading').textContent = `${asset.symbol} supplied`;
+  const assetChip = document.querySelector('.asset-chip');
+  if (assetChip?.lastChild?.nodeType === Node.TEXT_NODE) assetChip.lastChild.textContent = ` ${asset.symbol}`;
+  $('goal-target-suffix').textContent = asset.symbol;
+  $('goal-target').placeholder = `e.g. 100 ${asset.symbol}`;
+  $('yield-label-suffix').textContent = asset.symbol;
+  $('yield-unit-suffix').textContent = asset.symbol;
+  $('amount-token-label').textContent = asset.symbol;
+  $('asset-risk-copy').textContent = `Supply APY changes and is not promised. Supplying USDT or USDC involves stablecoin, smart contract, network and liquidity risks. A withdrawal can depend on available liquidity. Polygon transactions need POL for gas. Current never holds funds or asks for your seed phrase.`;
+  setSelectedReserve();
+  if (state.market) renderMarket();
+  renderWalletHeader();
+  renderWalletPosition();
+  renderWalletControls();
+  renderSavingsGoal();
+  renderNairaDisplays();
+  if (state.wallet) void loadSavingsGoal();
+  if (state.wallet) refreshWallet().catch((error) => setWalletMessage(error.message, true));
 }
 
 function setBusy(busy) {
@@ -784,9 +913,9 @@ function showToast(message, tone = 'success') {
   state.toastTimer = setTimeout(() => { toast.hidden = true; toast.classList.remove('is-visible'); }, 4800);
 }
 
-function makeSupplyQuery(amount) {
-  const amountText = formatTokenAmount(amount).replaceAll(',', '');
-  return `query { supply(request: { market: "${AAVE_V3_POLYGON_POOL}", amount: { erc20: { currency: "${USDT_ADDRESS}", value: "${amountText}" } }, sender: "${state.wallet}", chainId: ${CHAIN_ID} }) {
+function makeSupplyQuery(amount, asset = currentAsset()) {
+  const amountText = formatTokenAmount(amount, asset.decimals).replaceAll(',', '');
+  return `query { supply(request: { market: "${AAVE_V3_POLYGON_POOL}", amount: { erc20: { currency: "${asset.address}", value: "${amountText}" } }, sender: "${state.wallet}", chainId: ${CHAIN_ID} }) {
     __typename
     ... on TransactionRequest { to from data value chainId operation }
     ... on ApprovalRequired { reason requiredAmount { value decimals } currentAllowance { value decimals } approval { to from data value chainId operation } originalTransaction { to from data value chainId operation } }
@@ -794,9 +923,9 @@ function makeSupplyQuery(amount) {
   } }`;
 }
 
-function makeWithdrawQuery(amount) {
-  const amountText = formatTokenAmount(amount).replaceAll(',', '');
-  return `query { withdraw(request: { market: "${AAVE_V3_POLYGON_POOL}", amount: { erc20: { currency: "${USDT_ADDRESS}", value: { exact: "${amountText}" } } }, sender: "${state.wallet}", chainId: ${CHAIN_ID} }) {
+function makeWithdrawQuery(amount, asset = currentAsset()) {
+  const amountText = formatTokenAmount(amount, asset.decimals).replaceAll(',', '');
+  return `query { withdraw(request: { market: "${AAVE_V3_POLYGON_POOL}", amount: { erc20: { currency: "${asset.address}", value: { exact: "${amountText}" } } }, sender: "${state.wallet}", chainId: ${CHAIN_ID} }) {
     __typename
     ... on TransactionRequest { to from data value chainId operation }
     ... on ApprovalRequired { reason requiredAmount { value decimals } currentAllowance { value decimals } approval { to from data value chainId operation } originalTransaction { to from data value chainId operation } }
@@ -812,47 +941,50 @@ async function walletCanUseEoaPermit() {
 }
 
 async function prepareAction(amount) {
+  const asset = currentAsset();
   const supplyOwner = state.mode === 'supply' ? state.wallet : null;
-  const response = await gql(state.mode === 'supply' ? makeSupplyQuery(amount) : makeWithdrawQuery(amount));
+  const response = await gql(state.mode === 'supply' ? makeSupplyQuery(amount, asset) : makeWithdrawQuery(amount, asset));
   if (supplyOwner && (!state.wallet || state.mode !== 'supply' || state.wallet.toLowerCase() !== supplyOwner.toLowerCase())) {
     throw new Error('The connected wallet changed while the supply was being prepared. Refresh the balance and review again.');
   }
   const plan = response[state.mode];
   if (!plan) throw new Error('Aave did not return a transaction plan. Nothing was sent.');
-  if (plan.__typename === 'InsufficientBalanceError') throw new Error(`Aave reports insufficient balance. Available: ${plan.available?.value ?? 'unavailable'} USDT.`);
+  if (plan.__typename === 'InsufficientBalanceError') throw new Error(`Aave reports insufficient balance. Available: ${plan.available?.value ?? 'unavailable'} ${asset.symbol}.`);
   if (state.mode === 'supply') {
     if (plan.__typename === 'ApprovalRequired') {
-      validateSupplyTransaction(plan.originalTransaction, state.wallet, amount);
-      const exactApproval = prepareExactApprovalTransaction(plan.approval, state.wallet, amount, state.walletData.allowance);
-      validateApprovalTransaction(exactApproval, state.wallet, amount);
+      validateSupplyTransaction(plan.originalTransaction, state.wallet, amount, asset);
+      const exactApproval = prepareExactApprovalTransaction(plan.approval, state.wallet, amount, state.walletData.allowance, asset);
+      validateApprovalTransaction(exactApproval, state.wallet, amount, asset);
       const step = await walletCanUseEoaPermit() ? 'permit' : 'approval';
-      return { kind: 'supply', amount, owner: state.wallet, plan: { ...plan, approval: exactApproval }, step };
+      return { kind: 'supply', amount, assetId: asset.id, owner: state.wallet, plan: { ...plan, approval: exactApproval }, step };
     }
     if (plan.__typename === 'TransactionRequest') {
-      validateSupplyTransaction(plan, state.wallet, amount);
-      return { kind: 'supply', amount, plan, step: 'supply' };
+      validateSupplyTransaction(plan, state.wallet, amount, asset);
+      return { kind: 'supply', amount, assetId: asset.id, plan, step: 'supply' };
     }
   } else if (plan.__typename === 'TransactionRequest') {
-    validateWithdrawTransaction(plan, state.wallet, amount);
-    return { kind: 'withdraw', amount, plan, step: 'withdraw' };
+    validateWithdrawTransaction(plan, state.wallet, amount, asset);
+    return { kind: 'withdraw', amount, assetId: asset.id, plan, step: 'withdraw' };
   }
   throw new Error(`Aave returned an unsupported ${plan.__typename || 'transaction'} plan. Nothing was sent.`);
 }
 
 function setDialogPlan(action) {
   state.pendingAction = action;
+  const asset = getAsset(action.assetId || 'usdt');
   const usesNimRelay = action.step === 'nimRelay';
   const isRelayAction = usesNimRelay || action.step === 'relayStatus';
   const needsApproval = action.kind === 'supply' && action.step === 'approval';
   const usesPermit = action.kind === 'supply' && action.step === 'permit';
   $('dialog-action').textContent = action.step === 'relayStatus' ? 'NIM gas relay status' : usesNimRelay ? 'Supply with NIM-paid gas' : needsApproval ? 'Approve exact spend' : action.kind === 'supply' ? 'Supply to Aave' : 'Withdraw from Aave';
-  $('dialog-amount').textContent = `${formatTokenAmount(action.amount)} USDT`;
+  $('dialog-amount').textContent = `${formatTokenAmount(action.amount, asset.decimals)} ${asset.symbol}`;
+  $('transaction-asset').textContent = `${asset.symbol} · Polygon`;
   $('transaction-target').textContent = usesNimRelay ? `Aave V3 Polygon pool · ${AAVE_V3_POLYGON_POOL}` : needsApproval
-    ? `USDT token · ${USDT_ADDRESS}`
+    ? `${asset.symbol} token · ${asset.address}`
     : `Aave V3 pool · ${AAVE_V3_POLYGON_POOL}`;
   $('approval-detail-row').hidden = isRelayAction || !(needsApproval || usesPermit);
   $('approval-detail-row').querySelector('dt').textContent = usesPermit ? 'Permit' : 'Allowance';
-  $('approval-detail').textContent = `${formatTokenAmount(action.amount)} USDT · exact amount${usesPermit ? ' · expires in 20 minutes' : ' · one-time approval'}`;
+  $('approval-detail').textContent = `${formatTokenAmount(action.amount, asset.decimals)} ${asset.symbol} · exact amount${usesPermit ? ' · expires in 20 minutes' : ' · one-time approval'}`;
   $('relay-fee-row').hidden = !isRelayAction;
   $('relay-fee-detail').textContent = isRelayAction ? `${(Number(action.quote.fee) / 100000).toFixed(5)} NIM · to ${action.quote.recipient} · memo ${action.quote.memo}` : '—';
   $('network-gas-row').querySelector('dd').textContent = isRelayAction ? 'POL paid by Current relayer' : 'POL · paid from your wallet';
@@ -861,7 +993,7 @@ function setDialogPlan(action) {
   $('dialog-status').textContent = action.step === 'relayStatus'
     ? 'Resumed a previously submitted NIM payment. Check relay status below; do not make another payment.'
     : usesNimRelay
-    ? 'Your wallet will first sign a NIM transfer to the displayed recipient. Current verifies that payment, then its relayer submits your exact USDT supply to Aave. The permit authorizes only this amount and expires shortly. A failed relay may require manual fee review; do not repeat the NIM payment.'
+    ? `Your wallet will first sign a NIM transfer to the displayed recipient. Current verifies that payment, then its relayer submits your exact ${asset.symbol} supply to Aave. The permit authorizes only this amount and expires shortly. A failed relay may require manual fee review; do not repeat the NIM payment.`
     : needsApproval
     ? 'Aave requests a one-time approval limited to this exact amount. The supply requires a separate confirmation afterward.'
     : usesPermit ? 'Sign a short-lived typed permit for this exact amount to Aave, then confirm one Polygon supply transaction. The permit does not move funds; the supply transaction needs POL for gas.'
@@ -885,12 +1017,13 @@ async function prepareNimRelay() {
   if (!state.wallet || !state.walletData || !window.nimiq?.sendBasicTransactionWithData) throw new Error('Open Current inside Nimiq Pay to use the NIM gas relay.');
   if (state.mode !== 'supply') throw new Error('NIM gas relay is only available for supply actions.');
   if (!marketAllowsSupply()) throw new Error('Aave supply is unavailable or its market data is stale. Refresh and try again.');
-  const amount = amountFromInput($('amount-input').value, 'supply', state.walletData.tokenBalance, state.walletData.aTokenBalance);
-  const quote = await postRelay('quote', { owner: state.wallet, amount: amount.toString() });
-  const permit = await signSupplyPermit(amount);
+  const asset = currentAsset();
+  const amount = amountFromInput($('amount-input').value, 'supply', state.walletData.tokenBalance, state.walletData.aTokenBalance, asset.decimals, asset.symbol);
+  const quote = await postRelay('quote', { owner: state.wallet, amount: amount.toString(), asset: asset.id });
+  const permit = await signSupplyPermit(amount, asset);
   await recheckBeforeWrite();
-  await postRelay('prepare', { quoteId: quote.id, owner: state.wallet, amount: amount.toString(), permit });
-  setDialogPlan({ kind: 'supply', step: 'nimRelay', owner: state.wallet, amount, quote, permit });
+  await postRelay('prepare', { quoteId: quote.id, owner: state.wallet, amount: amount.toString(), asset: asset.id, permit });
+  setDialogPlan({ kind: 'supply', step: 'nimRelay', assetId: asset.id, owner: state.wallet, amount, quote, permit });
 }
 
 async function submitNimRelay(action) {
@@ -947,7 +1080,7 @@ function restoreRelayStatus() {
   try {
     const saved = JSON.parse(sessionStorage.getItem(RELAY_PENDING_KEY) || 'null');
     if (!saved || !saved.quote?.id || !/^(?:0x)?[0-9a-f]{64}$/i.test(saved.nimTxHash || '') || !/^\d+$/.test(saved.amount || '')) return;
-    setDialogPlan({ kind: 'supply', step: 'relayStatus', owner: saved.owner, amount: BigInt(saved.amount), quote: saved.quote, nimTxHash: saved.nimTxHash });
+    setDialogPlan({ kind: 'supply', step: 'relayStatus', assetId: saved.quote.asset || 'usdt', owner: saved.owner, amount: BigInt(saved.amount), quote: saved.quote, nimTxHash: saved.nimTxHash });
   } catch { /* Ignore corrupt session-only relay metadata. */ }
 }
 
@@ -957,7 +1090,7 @@ async function reviewSubmit(event) {
   if (!state.walletData) return switchToPolygon();
   if (!state.market || state.gqlBusy || Date.now() - state.market.fetchedAt.getTime() >= 60_000) return showToast('Live Aave market data is unavailable or out of date. Refresh it before preparing a transaction.');
   try {
-    const amount = amountFromInput($('amount-input').value, state.mode, state.walletData.tokenBalance, state.walletData.aTokenBalance);
+    const amount = amountFromInput($('amount-input').value, state.mode, state.walletData.tokenBalance, state.walletData.aTokenBalance, currentAsset().decimals, currentAsset().symbol);
     setBusy(true);
     $('review-button').classList.add('is-loading');
     $('review-button').setAttribute('aria-busy', 'true');
@@ -986,13 +1119,13 @@ async function recheckBeforeWrite() {
   if (Number.parseInt(chain, 16) !== CHAIN_ID) throw new Error('Wallet network changed. Switch back to Polygon and review again.');
 }
 
-async function sendValidated(transaction, kind, amount) {
+async function sendValidated(transaction, kind, amount, asset = currentAsset()) {
   const injected = provider();
   await recheckBeforeWrite();
-  if (kind === 'approval') validateApprovalTransaction(transaction, state.wallet, amount);
-  if (kind === 'supply') validateSupplyTransaction(transaction, state.wallet, amount);
-  if (kind === 'supplyPermit') validateSupplyWithPermitTransaction(transaction, state.wallet, amount, transaction.permitDeadline);
-  if (kind === 'withdraw') validateWithdrawTransaction(transaction, state.wallet, amount);
+  if (kind === 'approval') validateApprovalTransaction(transaction, state.wallet, amount, asset);
+  if (kind === 'supply') validateSupplyTransaction(transaction, state.wallet, amount, asset);
+  if (kind === 'supplyPermit') validateSupplyWithPermitTransaction(transaction, state.wallet, amount, transaction.permitDeadline, asset);
+  if (kind === 'withdraw') validateWithdrawTransaction(transaction, state.wallet, amount, asset);
   const payload = { from: transaction.from, to: transaction.to, data: transaction.data, value: transaction.value || '0x0' };
   const txHash = await injected.request({ method: 'eth_sendTransaction', params: [payload] });
   if (typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new Error('The wallet returned an invalid transaction hash. Check the wallet activity before retrying.');
@@ -1025,6 +1158,7 @@ function savedPending() {
 async function confirmDialogAction() {
   const action = state.pendingAction;
   if (!action || state.busy) return;
+  const asset = getAsset(action.assetId || 'usdt');
   setBusy(true);
   $('confirm-action').disabled = true;
   $('confirm-action').classList.add('is-loading');
@@ -1056,8 +1190,8 @@ async function confirmDialogAction() {
         tokenBalance: state.walletData.tokenBalance,
         aTokenBalance: state.walletData.aTokenBalance,
       };
-      const hash = await sendValidated(action.plan.approval, 'approval', action.amount);
-      const pending = { hash, mode: 'approval', from: state.wallet, amount: action.amount.toString(), before: null };
+      const hash = await sendValidated(action.plan.approval, 'approval', action.amount, asset);
+      const pending = { hash, mode: 'approval', assetId: asset.id, from: state.wallet, amount: action.amount.toString(), before: null };
       state.pendingAction = { kind: 'reconcile', pending };
       savePending(pending);
       $('dialog-status').textContent = 'Approval submitted. Waiting for Polygon confirmation…';
@@ -1070,10 +1204,10 @@ async function confirmDialogAction() {
         $('confirm-action').disabled = false;
         return;
       }
-      if (receipt.from?.toLowerCase() !== state.wallet.toLowerCase() || receipt.to?.toLowerCase() !== USDT_ADDRESS.toLowerCase()) {
-        throw new Error('Polygon receipt did not match the approved wallet and USDT token contract. Reconcile before continuing.');
+      if (receipt.from?.toLowerCase() !== state.wallet.toLowerCase() || receipt.to?.toLowerCase() !== asset.address.toLowerCase()) {
+        throw new Error(`Polygon receipt did not match the approved wallet and ${asset.symbol} token contract. Reconcile before continuing.`);
       }
-      const allowance = await ethCall(USDT_ADDRESS, encodeAllowance(state.wallet, AAVE_V3_POLYGON_POOL));
+      const allowance = await ethCall(asset.address, encodeAllowance(state.wallet, AAVE_V3_POLYGON_POOL));
       if (allowance !== action.amount) throw new Error('Approval receipt confirmed, but Polygon read back did not show the exact requested allowance. Supply remains disabled.');
       sessionStorage.removeItem('current.pending');
       state.pendingAction = null;
@@ -1081,12 +1215,12 @@ async function confirmDialogAction() {
       $('confirm-action').disabled = false;
       // Rebuild the Aave plan after allowance confirmation so the wallet gets
       // a fresh supply call, never a stale approval plan.
-      const refreshedPlan = await gql(makeSupplyQuery(action.amount));
+      const refreshedPlan = await gql(makeSupplyQuery(action.amount, asset));
       const supplyPlan = refreshedPlan.supply;
       if (!supplyPlan || supplyPlan.__typename !== 'TransactionRequest') {
         throw new Error('Approval confirmed, but Aave did not return a separate supply transaction. Refresh and review again.');
       }
-      validateSupplyTransaction(supplyPlan, state.wallet, action.amount);
+      validateSupplyTransaction(supplyPlan, state.wallet, action.amount, asset);
       action.plan = supplyPlan;
       state.pendingAction = action;
       action.step = 'supply';
@@ -1098,7 +1232,7 @@ async function confirmDialogAction() {
       return;
     }
     const mode = action.kind;
-    const before = await ethCall(AAVE_V3_POLYGON_ATOKEN, encodeBalanceOf(state.wallet));
+    const before = await ethCall(asset.aToken, encodeBalanceOf(state.wallet));
     state.walletReturnSnapshot = {
       wallet: state.wallet,
       mode,
@@ -1109,21 +1243,21 @@ async function confirmDialogAction() {
     let transaction;
     let transactionKind = mode;
     if (action.step === 'permit') {
-      $('dialog-status').textContent = 'Requesting a short-lived signature for the exact USDT amount and Aave pool…';
-      const permit = await signSupplyPermit(action.amount);
+      $('dialog-status').textContent = `Requesting a short-lived signature for the exact ${asset.symbol} amount and Aave pool…`;
+      const permit = await signSupplyPermit(action.amount, asset);
       await recheckBeforeWrite();
       if (action.owner.toLowerCase() !== state.wallet.toLowerCase()) throw new Error('The connected wallet changed while the permit was signed. Nothing was sent; review the new wallet before continuing.');
-      if (await ethCall(USDT_ADDRESS, encodePermitNonce(state.wallet)) !== permit.nonce) throw new Error('The USDT permit nonce changed while you reviewed it. Reopen the action to sign a fresh permit; nothing was sent.');
-      if (await ethCall(USDT_ADDRESS, encodeBalanceOf(state.wallet)) < action.amount) throw new Error('Your Polygon USDT balance changed below the requested amount. Refresh the wallet balance and review again; nothing was sent.');
-      transaction = makeSupplyWithPermitTransaction(action.amount, permit);
+      if (await ethCall(asset.address, encodePermitNonce(state.wallet)) !== permit.nonce) throw new Error(`The ${asset.symbol} permit nonce changed while you reviewed it. Reopen the action to sign a fresh permit; nothing was sent.`);
+      if (await ethCall(asset.address, encodeBalanceOf(state.wallet)) < action.amount) throw new Error(`Your Polygon ${asset.symbol} balance changed below the requested amount. Refresh the wallet balance and review again; nothing was sent.`);
+      transaction = makeSupplyWithPermitTransaction(action.amount, permit, asset);
       transaction.permitDeadline = permit.deadline;
-      validateSupplyWithPermitTransaction(transaction, state.wallet, action.amount, permit.deadline);
+      validateSupplyWithPermitTransaction(transaction, state.wallet, action.amount, permit.deadline, asset);
       transactionKind = 'supplyPermit';
     } else {
       transaction = action.step === 'supply' ? action.plan.originalTransaction || action.plan : action.plan;
     }
-    const hash = await sendValidated(transaction, transactionKind, action.amount);
-    const pending = { hash, mode, from: state.wallet, amount: action.amount.toString(), before: before.toString() };
+    const hash = await sendValidated(transaction, transactionKind, action.amount, asset);
+    const pending = { hash, mode, assetId: asset.id, from: state.wallet, amount: action.amount.toString(), before: before.toString() };
     state.pendingAction = { kind: 'reconcile', pending };
     savePending(pending);
     $('dialog-status').textContent = 'Submitted to Polygon. Waiting for its receipt…';
@@ -1138,10 +1272,10 @@ async function confirmDialogAction() {
       return;
     }
     $('dialog-status').textContent = 'Receipt confirmed. Checking your Aave balance directly on Polygon…';
-    const verified = await reconcilePosition({ hash, mode, from: state.wallet, amount: action.amount.toString(), before: before.toString() });
+    const verified = await reconcilePosition({ hash, mode, assetId: asset.id, from: state.wallet, amount: action.amount.toString(), before: before.toString() });
     if (verified) {
       sessionStorage.removeItem('current.pending');
-      $('dialog-status').textContent = `${mode === 'supply' ? 'Supply' : 'Withdrawal'} confirmed. Polygon receipt and updated aUSDT balance both verified.`;
+      $('dialog-status').textContent = `${mode === 'supply' ? 'Supply' : 'Withdrawal'} confirmed. Polygon receipt and updated ${asset.aTokenSymbol} balance both verified.`;
       $('dialog-status').classList.remove('is-error');
       showToast(`${mode === 'supply' ? 'Supply' : 'Withdrawal'} verified from the Polygon receipt and wallet position.`);
       await refreshWallet();
@@ -1187,7 +1321,8 @@ function setTransactionLink(hash) {
   $('transaction-link').hidden = false;
 }
 
-async function reconcilePosition({ hash, mode, from, amount, before }) {
+async function reconcilePosition({ hash, mode, from, amount, before, assetId = 'usdt' }) {
+  const asset = getAsset(assetId);
   if (!provider() || state.wallet?.toLowerCase() !== from.toLowerCase()) return false;
   const receipt = await provider().request({ method: 'eth_getTransactionReceipt', params: [hash] });
   if (!receipt || (receipt.status !== '0x1' && receipt.status !== 1) ||
@@ -1195,7 +1330,7 @@ async function reconcilePosition({ hash, mode, from, amount, before }) {
       receipt.from?.toLowerCase() !== from.toLowerCase() ||
       receipt.to?.toLowerCase() !== AAVE_V3_POLYGON_POOL.toLowerCase()) return false;
   for (let attempt = 0; attempt < 12; attempt++) {
-    const after = await ethCall(AAVE_V3_POLYGON_ATOKEN, encodeBalanceOf(from));
+    const after = await ethCall(asset.aToken, encodeBalanceOf(from));
     if (expectedBalanceDelta(before, after, amount, mode)) return true;
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
@@ -1209,7 +1344,9 @@ async function reconcileSavedPending() {
   $('review-dialog').showModal();
   $('dialog-title').textContent = 'Reconcile transaction';
   $('dialog-action').textContent = 'Pending transaction';
-  $('dialog-amount').textContent = pending.amount ? `${formatTokenAmount(pending.amount)} USDT` : 'Approval';
+  const asset = getAsset(pending.assetId || 'usdt');
+  $('dialog-amount').textContent = pending.amount ? `${formatTokenAmount(pending.amount, asset.decimals)} ${asset.symbol}` : 'Approval';
+  $('transaction-asset').textContent = `${asset.symbol} · Polygon`;
   $('dialog-status').textContent = 'Checking the saved transaction hash and receipt. No new transaction will be sent.';
   $('confirm-action').querySelector('span').textContent = 'Check status';
   $('confirm-action').disabled = false;
@@ -1244,9 +1381,9 @@ async function confirmReconciliation() {
     if (pending.mode === 'approval') {
       if (receipt.transactionHash?.toLowerCase() !== pending.hash.toLowerCase() ||
           receipt.from?.toLowerCase() !== pending.from.toLowerCase() ||
-          receipt.to?.toLowerCase() !== USDT_ADDRESS.toLowerCase() ||
+          receipt.to?.toLowerCase() !== getAsset(pending.assetId || 'usdt').address.toLowerCase() ||
           (receipt.status !== '0x1' && receipt.status !== 1)) throw new Error('Polygon receipt did not match the saved approval transaction.');
-      const allowance = await ethCall(USDT_ADDRESS, encodeAllowance(pending.from, AAVE_V3_POLYGON_POOL));
+      const allowance = await ethCall(getAsset(pending.assetId || 'usdt').address, encodeAllowance(pending.from, AAVE_V3_POLYGON_POOL));
       if (allowance !== BigInt(pending.amount)) throw new Error('Receipt exists, but allowance read back did not match the exact requested amount.');
       sessionStorage.removeItem('current.pending');
       $('dialog-status').textContent = 'Exact allowance and receipt verified. Review the supply action again when ready.';
@@ -1259,13 +1396,14 @@ async function confirmReconciliation() {
     const verified = await reconcilePosition(pending);
     if (!verified) throw new Error('The Polygon receipt is present, but the position has not changed by the expected amount. Status remains unverified; do not repeat the transaction.');
     sessionStorage.removeItem('current.pending');
-    $('dialog-status').textContent = 'Polygon receipt and updated aUSDT balance both verified.';
+    $('dialog-status').textContent = `Polygon receipt and updated ${getAsset(pending.assetId || 'usdt').aTokenSymbol} balance both verified.`;
     $('dialog-status').classList.remove('is-error');
     showToast('Saved transaction and updated position verified.', 'success');
     $('confirm-action').querySelector('span').textContent = 'Close';
     $('confirm-action').disabled = false;
     state.pendingAction = null;
     await refreshWallet();
+    void loadSavingsGoal();
   } catch (error) {
     $('dialog-status').textContent = cleanCopy(error.message || 'Could not verify the result. Do not repeat the transaction.');
     $('dialog-status').classList.add('is-error');
@@ -1303,6 +1441,7 @@ function initEvents() {
   $('disconnect-top').addEventListener('click', () => {
     state.wallet = null;
     state.walletData = null;
+    state.savedGoals = {};
     state.walletDismissed = true;
     try { sessionStorage.setItem('current-wallet-dismissed', 'true'); } catch {}
     renderWalletHeader();
@@ -1316,6 +1455,8 @@ function initEvents() {
   $('estimate-principal').addEventListener('input', renderYieldLens);
   $('goal-form').addEventListener('submit', saveSavingsGoal);
   $('goal-clear').addEventListener('click', clearSavingsGoal);
+  $('asset-usdt').addEventListener('click', () => selectAsset('usdt'));
+  $('asset-usdc').addEventListener('click', () => selectAsset('usdc'));
   $('nim-relay-button').addEventListener('click', async () => {
     if (state.busy) return;
     try {
@@ -1355,16 +1496,17 @@ function initEvents() {
       try { sessionStorage.removeItem('current-wallet-dismissed'); } catch {}
       state.wallet = Array.isArray(accounts) && isAddress(accounts[0]) ? accounts[0] : null;
       state.walletData = null;
+      state.savedGoals = {};
       renderWalletHeader();
       renderWalletPosition();
     renderSavingsGoal();
       renderWalletControls();
-      if (state.wallet) refreshWallet().catch((error) => setWalletMessage(error.message, true));
+      if (state.wallet) refreshWallet().then(loadSavingsGoal).catch((error) => setWalletMessage(error.message, true));
       else setWalletMessage('Wallet disconnected.');
     });
     injected.on('chainChanged', () => {
       state.walletData = null;
-      refreshWallet().catch((error) => setWalletMessage(error.message, true));
+      refreshWallet().then(loadSavingsGoal).catch((error) => setWalletMessage(error.message, true));
     });
   }
 }
@@ -1457,6 +1599,7 @@ async function init() {
         state.wallet = accounts[0];
         renderWalletHeader();
         await refreshWallet();
+        void loadSavingsGoal();
         await reconcileSavedPending();
       }
     } catch (error) { setWalletMessage(error.message || 'Could not read wallet state.', true); }
