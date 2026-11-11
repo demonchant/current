@@ -30,7 +30,6 @@ const RELAY_PENDING_KEY = 'current.relay.pending.v1';
 let nimRelayEnabled = false;
 let nimRelayStatusUnavailable = false;
 let nimRelayConfigurationIssues = [];
-function wasWalletDismissed() { try { return sessionStorage.getItem('current-wallet-dismissed') === 'true'; } catch { return false; } }
 const state = {
   market: null,
   wallet: null,
@@ -40,7 +39,6 @@ const state = {
   fxError: false,
   walletReturnSnapshot: null,
   savedGoals: {},
-  walletDismissed: wasWalletDismissed(),
   assetId: 'usdt',
   mode: 'supply',
   gqlBusy: false,
@@ -576,18 +574,23 @@ async function switchToPolygon() {
   } finally { setBusy(false); }
 }
 
-const POLYGON_READ_RPCS = ['https://polygon-rpc.com', 'https://polygon-bor-rpc.publicnode.com'];
+const POLYGON_READ_RPCS = ['https://polygon.drpc.org', 'https://polygon-bor-rpc.publicnode.com'];
 
 async function polygonRead(method, params) {
+  const errors = [];
   for (const url of POLYGON_READ_RPCS) {
     try {
       const response = await fetch(url, { method: 'POST', credentials: 'omit', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
-      if (!response.ok) continue;
+      if (!response.ok) { errors.push(`${new URL(url).hostname}: HTTP ${response.status}`); continue; }
       const payload = await response.json();
       if (!payload.error && payload.result !== undefined) return payload.result;
-    } catch {}
+      if (payload.error) errors.push(`${new URL(url).hostname}: ${String(payload.error.message || 'RPC request failed').replace(/[\r\n\u0000-\u001f]/g, ' ').slice(0, 180)}`);
+    } catch (error) {
+      errors.push(`${new URL(url).hostname}: ${String(error?.message || 'network request failed').replace(/[\r\n\u0000-\u001f]/g, ' ').slice(0, 120)}`);
+    }
   }
-  throw new Error('Polygon balance service is temporarily unavailable. Refresh and try again.');
+  const reason = errors.find((message) => /execution reverted|revert|insufficient|balance|liquidity/i.test(message)) || errors.at(-1);
+  throw new Error(reason ? `Polygon RPC could not complete the request (${reason}).` : 'Polygon RPC could not complete the request.');
 }
 
 async function ethCall(to, data) {
@@ -1152,17 +1155,32 @@ async function sendValidated(transaction, kind, amount, asset = currentAsset()) 
   if (kind === 'supplyPermit') validateSupplyWithPermitTransaction(transaction, state.wallet, amount, transaction.permitDeadline, asset);
   if (kind === 'withdraw') validateWithdrawTransaction(transaction, state.wallet, amount, asset);
   const payload = { from: transaction.from, to: transaction.to, data: transaction.data, value: transaction.value || '0x0' };
-  try {
-    const estimate = await polygonRead('eth_estimateGas', [payload]);
-    if (typeof estimate !== 'string' || !/^0x[0-9a-f]+$/i.test(estimate) || BigInt(estimate) === 0n) throw new Error('invalid estimate');
-    const estimateValue = BigInt(estimate);
-    payload.gas = `0x${(estimateValue + estimateValue / 5n + 5000n).toString(16)}`;
-  } catch {
-    throw new Error('Polygon could not estimate gas for this transaction. Refresh the position and market, then retry. Nothing was sent.');
-  }
+  payload.gas = await estimatePolygonGas(payload);
   const txHash = await injected.request({ method: 'eth_sendTransaction', params: [payload] });
   if (typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new Error('The wallet returned an invalid transaction hash. Check the wallet activity before retrying.');
   return txHash;
+}
+
+async function estimatePolygonGas(transaction) {
+  const estimateErrors = [];
+  const candidates = [
+    () => polygonRead('eth_estimateGas', [transaction]),
+    () => provider()?.request({ method: 'eth_estimateGas', params: [transaction] }),
+  ];
+  for (const estimateRequest of candidates) {
+    try {
+      const estimate = await estimateRequest();
+      if (typeof estimate !== 'string' || !/^0x[0-9a-f]+$/i.test(estimate) || BigInt(estimate) === 0n) {
+        throw new Error('RPC returned an invalid gas estimate');
+      }
+      const estimateValue = BigInt(estimate);
+      return `0x${(estimateValue + estimateValue / 5n + 5000n).toString(16)}`;
+    } catch (error) {
+      estimateErrors.push(String(error?.message || 'estimation request failed').replace(/[\r\n\u0000-\u001f]/g, ' ').slice(0, 180));
+    }
+  }
+  const reason = estimateErrors.filter(Boolean).join(' | ');
+  throw new Error(`Polygon gas estimation failed${reason ? `: ${reason}` : ''}. Nothing was sent. Check the reported RPC reason; if it says execution reverted, refresh your Aave position and confirm the reserve has available liquidity.`);
 }
 
 async function waitForReceipt(txHash) {
@@ -1466,7 +1484,7 @@ function maxAmount() {
 
 function initEvents() {
   $('connect-top').addEventListener('click', () => {
-    if (!state.wallet) { state.walletDismissed = false; try { sessionStorage.removeItem('current-wallet-dismissed'); } catch {} return connectWallet(); }
+    if (!state.wallet) return connectWallet();
     if (!state.walletData || state.walletChainId !== CHAIN_ID) return switchToPolygon();
     return refreshWallet().then(() => showToast('Wallet balances refreshed.')).catch((error) => { setWalletMessage(error.message, true); showToast(error.message, 'error'); });
   });
@@ -1474,8 +1492,6 @@ function initEvents() {
     state.wallet = null;
     state.walletData = null;
     state.savedGoals = {};
-    state.walletDismissed = true;
-    try { sessionStorage.setItem('current-wallet-dismissed', 'true'); } catch {}
     renderWalletHeader();
     renderWalletPosition();
     renderSavingsGoal();
@@ -1532,8 +1548,6 @@ function initEvents() {
   void loadNimRelayStatus();
   if (injected?.on) {
     injected.on('accountsChanged', (accounts) => {
-      state.walletDismissed = false;
-      try { sessionStorage.removeItem('current-wallet-dismissed'); } catch {}
       state.wallet = Array.isArray(accounts) && isAddress(accounts[0]) ? accounts[0] : null;
       state.walletData = null;
       state.savedGoals = {};
@@ -1632,7 +1646,7 @@ async function init() {
     if (snapshot) void refreshAfterWalletReturn(snapshot);
   });
   const injected = provider();
-  if (injected && !state.walletDismissed) {
+  if (injected) {
     try {
       const accounts = await injected.request({ method: 'eth_accounts' });
       if (Array.isArray(accounts) && isAddress(accounts[0])) {
