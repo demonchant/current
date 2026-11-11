@@ -576,7 +576,7 @@ async function switchToPolygon() {
   } finally { setBusy(false); }
 }
 
-const POLYGON_READ_RPCS = ['https://polygon-bor-rpc.publicnode.com', 'https://polygon-rpc.com'];
+const POLYGON_READ_RPCS = ['https://polygon-rpc.com', 'https://polygon-bor-rpc.publicnode.com'];
 
 async function polygonRead(method, params) {
   for (const url of POLYGON_READ_RPCS) {
@@ -597,7 +597,7 @@ async function ethCall(to, data) {
 }
 
 async function readTokenNameForPermit(asset = currentAsset()) {
-  const raw = await provider().request({ method: 'eth_call', params: [{ to: asset.address, data: '0x06fdde03' }, 'latest'] });
+  const raw = await polygonRead('eth_call', [{ to: asset.address, data: '0x06fdde03' }, 'latest']);
   if (typeof raw !== 'string' || !/^0x[0-9a-fA-F]+$/.test(raw) || raw.length < 130) throw new Error(`${asset.symbol} returned an invalid permit name. No transaction was sent.`);
   const data = raw.slice(2);
   const offset = Number(BigInt(`0x${data.slice(0, 64)}`));
@@ -774,7 +774,12 @@ function renderWalletControls() {
   const canEnterAmount = Boolean(state.walletData && !state.busy && (state.mode === 'supply' || onPolygon));
   input.disabled = !canEnterAmount;
   $('max-button').disabled = !canEnterAmount;
-  $('tab-withdraw').disabled = !onPolygon || BigInt(state.walletData?.aTokenBalance ?? 0) === 0n || state.busy;
+  $('tab-withdraw').disabled = !connected || state.busy;
+  const withdrawNeedsNetwork = connected && state.walletChainId !== CHAIN_ID;
+  $('withdraw-network-hint').hidden = state.mode !== 'withdraw' || !withdrawNeedsNetwork;
+  $('withdraw-network-hint').textContent = withdrawNeedsNetwork
+    ? 'Withdraw is selected. Switch your wallet to Polygon with the button below before reviewing the withdrawal.'
+    : '';
   $('tab-supply').disabled = state.busy;
   const hasAmount = validAmountForCurrentMode();
   const canWrite = onPolygon && actionAvailable && hasAmount && BigInt(state.walletData?.nativeBalance ?? 0) > 0n && !state.busy;
@@ -806,7 +811,8 @@ function renderWalletControls() {
   else $('primary-label').textContent = state.mode === 'supply' ? 'Review supply' : 'Review withdrawal';
   $('action-caption').textContent = !connected
     ? 'Open this Mini App in Nimiq Pay to connect a wallet.'
-    : !onPolygon ? 'Polygon balance is visible. Switch the wallet to Polygon before transacting.'
+    : state.walletChainId !== CHAIN_ID ? `Switch to Polygon to ${state.mode === 'withdraw' ? 'review the selected withdrawal' : 'review a transaction'}.`
+      : !state.walletData ? 'Polygon is selected. Refresh your wallet position before continuing.'
       : BigInt(state.walletData.nativeBalance) === 0n ? 'Add POL to your Polygon wallet before a transaction.'
         : state.mode === 'supply' ? 'Supply: exact permit signature, then one POL-fee transaction. Standard approval is available as a fallback.' : 'Your wallet will show the withdrawal transaction for approval.';
   updateAmountSummary();
@@ -860,7 +866,7 @@ function updateAmountSummary() {
 }
 
 function setMode(mode) {
-  if (mode === 'withdraw' && $('tab-withdraw').disabled) return;
+  if (state.busy) return;
   state.mode = mode;
   $('tab-supply').classList.toggle('is-active', mode === 'supply');
   $('tab-withdraw').classList.toggle('is-active', mode === 'withdraw');
@@ -950,7 +956,7 @@ function makeWithdrawQuery(amount, asset = currentAsset()) {
 
 async function walletCanUseEoaPermit() {
   try {
-    const code = await provider().request({ method: 'eth_getCode', params: [state.wallet, 'latest'] });
+    const code = await polygonRead('eth_getCode', [state.wallet, 'latest']);
     return typeof code === 'string' && /^0x(?:0{2})*$/i.test(code);
   } catch { return false; }
 }
@@ -1146,15 +1152,22 @@ async function sendValidated(transaction, kind, amount, asset = currentAsset()) 
   if (kind === 'supplyPermit') validateSupplyWithPermitTransaction(transaction, state.wallet, amount, transaction.permitDeadline, asset);
   if (kind === 'withdraw') validateWithdrawTransaction(transaction, state.wallet, amount, asset);
   const payload = { from: transaction.from, to: transaction.to, data: transaction.data, value: transaction.value || '0x0' };
+  try {
+    const estimate = await polygonRead('eth_estimateGas', [payload]);
+    if (typeof estimate !== 'string' || !/^0x[0-9a-f]+$/i.test(estimate) || BigInt(estimate) === 0n) throw new Error('invalid estimate');
+    const estimateValue = BigInt(estimate);
+    payload.gas = `0x${(estimateValue + estimateValue / 5n + 5000n).toString(16)}`;
+  } catch {
+    throw new Error('Polygon could not estimate gas for this transaction. Refresh the position and market, then retry. Nothing was sent.');
+  }
   const txHash = await injected.request({ method: 'eth_sendTransaction', params: [payload] });
   if (typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new Error('The wallet returned an invalid transaction hash. Check the wallet activity before retrying.');
   return txHash;
 }
 
 async function waitForReceipt(txHash) {
-  const injected = provider();
   for (let attempt = 0; attempt < 30; attempt++) {
-    const receipt = await injected.request({ method: 'eth_getTransactionReceipt', params: [txHash] });
+    const receipt = await polygonRead('eth_getTransactionReceipt', [txHash]);
     if (receipt && receipt.blockNumber) {
       if (receipt.transactionHash?.toLowerCase() !== txHash.toLowerCase()) throw new Error('Polygon returned a receipt for a different transaction.');
       if (receipt.status === '0x0' || receipt.status === 0) throw new Error('The Polygon transaction reverted. No success was recorded.');
@@ -1343,7 +1356,7 @@ function setTransactionLink(hash) {
 async function reconcilePosition({ hash, mode, from, amount, before, assetId = 'usdt' }) {
   const asset = getAsset(assetId);
   if (!provider() || state.wallet?.toLowerCase() !== from.toLowerCase()) return false;
-  const receipt = await provider().request({ method: 'eth_getTransactionReceipt', params: [hash] });
+  const receipt = await polygonRead('eth_getTransactionReceipt', [hash]);
   if (!receipt || (receipt.status !== '0x1' && receipt.status !== 1) ||
       receipt.transactionHash?.toLowerCase() !== hash.toLowerCase() ||
       receipt.from?.toLowerCase() !== from.toLowerCase() ||
@@ -1381,7 +1394,7 @@ async function confirmReconciliation() {
   $('confirm-action').setAttribute('aria-busy', 'true');
   try {
     await recheckBeforeWrite();
-    const receipt = await provider().request({ method: 'eth_getTransactionReceipt', params: [pending.hash] });
+    const receipt = await polygonRead('eth_getTransactionReceipt', [pending.hash]);
     if (!receipt) {
       $('dialog-status').textContent = 'No receipt yet. It remains pending; do not submit it again.';
       setTransactionLink(pending.hash);

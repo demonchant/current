@@ -169,8 +169,9 @@
           </div>
           <div class="mode-switch" role="tablist" aria-label="Choose an action">
             <button class="mode-button is-active" id="tab-supply" type="button" role="tab" aria-selected="true" aria-controls="action-form" data-mode="supply">Supply</button>
-            <button class="mode-button" id="tab-withdraw" type="button" role="tab" aria-selected="false" aria-controls="action-form" data-mode="withdraw" disabled>Withdraw</button>
+            <button class="mode-button" id="tab-withdraw" type="button" role="tab" aria-selected="false" aria-controls="action-form" aria-describedby="withdraw-network-hint" data-mode="withdraw" disabled>Withdraw</button>
           </div>
+          <p class="field-hint" id="withdraw-network-hint" role="status" hidden></p>
 
           <form id="action-form" novalidate>
             <label class="amount-label" for="amount-input"><span id="amount-label">Amount to supply</span><span class="available" id="available-label">Balance unavailable</span></label>
