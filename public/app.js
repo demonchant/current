@@ -1154,11 +1154,23 @@ async function sendValidated(transaction, kind, amount, asset = currentAsset()) 
   if (kind === 'supply') validateSupplyTransaction(transaction, state.wallet, amount, asset);
   if (kind === 'supplyPermit') validateSupplyWithPermitTransaction(transaction, state.wallet, amount, transaction.permitDeadline, asset);
   if (kind === 'withdraw') validateWithdrawTransaction(transaction, state.wallet, amount, asset);
-  const payload = { from: transaction.from, to: transaction.to, data: transaction.data, value: transaction.value || '0x0' };
+  const payload = { from: transaction.from, to: transaction.to, data: transaction.data, value: rpcQuantity(transaction.value) };
   payload.gas = await estimatePolygonGas(payload);
   const txHash = await injected.request({ method: 'eth_sendTransaction', params: [payload] });
   if (typeof txHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) throw new Error('The wallet returned an invalid transaction hash. Check the wallet activity before retrying.');
   return txHash;
+}
+
+function rpcQuantity(value) {
+  if (value === undefined || value === null || value === '') return '0x0';
+  let quantity;
+  if (typeof value === 'bigint') quantity = value;
+  else if (typeof value === 'number' && Number.isSafeInteger(value)) quantity = BigInt(value);
+  else if (typeof value === 'string' && /^0x[0-9a-f]+$/i.test(value)) quantity = BigInt(value);
+  else if (typeof value === 'string' && /^\d+$/.test(value)) quantity = BigInt(value);
+  else throw new Error('Transaction native-token value is invalid. Nothing was sent.');
+  if (quantity < 0n) throw new Error('Transaction native-token value cannot be negative. Nothing was sent.');
+  return `0x${quantity.toString(16)}`;
 }
 
 async function estimatePolygonGas(transaction) {
