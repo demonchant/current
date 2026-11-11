@@ -33,7 +33,7 @@ test('USDT amount parsing preserves six decimal places and rejects unsafe format
 
 test('amount ceiling is checked against wallet or supplied position', () => {
   assert.equal(amountFromInput('1', 'supply', 2_000_000n, 0n), 1_000_000n);
-  assert.throws(() => amountFromInput('3', 'supply', 2_000_000n, 0n), /wallet balance/);
+  assert.throws(() => amountFromInput('3', 'supply', 2_000_000n, 0n), /available USDT balance/);
   assert.throws(() => amountFromInput('1', 'withdraw', 0n, 500_000n), /Aave position/);
 });
 

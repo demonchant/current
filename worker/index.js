@@ -1,11 +1,13 @@
 import { DurableObject } from 'cloudflare:workers';
-import { createPublicClient, createWalletClient, http, parseAbi, recoverMessageAddress } from 'viem';
+import { createPublicClient, createWalletClient, http, parseAbi } from 'viem';
 import { polygon } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
+import { handlePaymentClaim, handleRelayJobState } from './durable-state.mjs';
+import { goalMessage, nimPaymentMatchesQuote, relaySupplyPositionMatches, signatureMatchesOwner } from './relay-logic.mjs';
 
 const TOKENS = Object.freeze({
-  usdt: { address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', symbol: 'USDT' },
-  usdc: { address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', symbol: 'USDC' },
+  usdt: { address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', aToken: '0x6ab707Aca953eDAeFBc4fD23bA73294241490620', symbol: 'USDT' },
+  usdc: { address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', aToken: '0xA4D94019934D8333Ef880ABFFbF2FDd611C762BD', symbol: 'USDC' },
 });
 const POOL = '0x794a61358D6845594F94dc1DB02A252b5b4814aD';
 const usdtAbi = parseAbi([
@@ -53,9 +55,6 @@ function configIssues(env) {
   ].filter(([, valid]) => !valid).map(([name]) => name);
 }
 function config(env) { return configIssues(env).length === 0; }
-function goalMessage({ owner, nonce, action, asset, targetRaw = '', date = '' }) {
-  return `Current savings goal ${action}\nWallet: ${owner.toLowerCase()}\nNonce: ${nonce}\nAsset: ${asset}\nTarget raw: ${targetRaw}\nTarget date: ${date}`;
-}
 function clients(env) {
   const account = privateKeyToAccount(relayerKey(env.RELAYER_PRIVATE_KEY));
   const publicClient = createPublicClient({ chain: polygon, transport: http(env.POLYGON_RPC_URL) });
@@ -72,81 +71,37 @@ async function nimiqRpc(env, method, params) {
 
 export class RelayJob extends DurableObject {
   constructor(ctx, env) { super(ctx, env); this.env = env; }
-  async fetch(request) {
-    const path = new URL(request.url).pathname;
-    if (path === '/goals/nonce' && request.method === 'POST') {
-      const nonce = uuid();
-      await this.ctx.storage.put('goal_nonce', { nonce, expiresAt: Date.now() + 5 * 60_000 });
-      return json({ nonce });
-    }
-    if (path === '/goals/access' && request.method === 'POST') {
-      const { nonce, action, goal } = await request.json();
-      try {
-        const result = await this.ctx.storage.transaction(async (txn) => {
-          const savedNonce = await txn.get('goal_nonce');
-          if (!savedNonce || savedNonce.nonce !== nonce || savedNonce.expiresAt < Date.now()) return null;
-          await txn.delete('goal_nonce');
-          const goals = (await txn.get('goals')) || {};
-          if (action === 'save') goals[goal.asset] = goal;
-          else if (action === 'delete') delete goals[goal.asset];
-          await txn.put('goals', goals);
-          return { authorized: true, goal: action === 'read' ? goals[goal.asset] || null : action === 'delete' ? null : goals[goal.asset] };
-        });
-        if (!result?.authorized) return json({ error: 'Goal authorization expired or was already used.' }, 409);
-        return json({ goal: result.goal });
-      } catch { return json({ error: 'Goal storage is temporarily unavailable.' }, 503); }
-    }
-    if (request.method === 'PUT') {
-      const job = await request.json();
-      await this.ctx.storage.put('job', job);
-      if (job.status === 'submitted' || job.status === 'pending') await this.ctx.storage.setAlarm(Date.now() + 5000);
-      return json({ ok: true });
-    }
-    if (request.method === 'POST') {
-      const { paymentHash, finalized } = await request.json();
-      const job = await this.ctx.storage.get('job');
-      if (!job) return json({ claimed: false, status: 'unknown' }, 404);
-      if (!finalized && job.status === 'awaiting_nim') {
-        const updated = { ...job, status: 'nim_pending', nimTxHash: paymentHash };
-        await this.ctx.storage.put('job', updated);
-        return json({ claimed: true, status: updated.status });
-      }
-      if (!finalized && job.status === 'nim_pending' && job.nimTxHash?.toLowerCase() === paymentHash.toLowerCase()) return json({ claimed: true, status: job.status });
-      if (finalized && ['awaiting_nim', 'nim_pending'].includes(job.status) && (job.status === 'awaiting_nim' || job.nimTxHash?.toLowerCase() === paymentHash.toLowerCase())) {
-        const updated = { ...job, status: 'relaying', nimTxHash: paymentHash };
-        await this.ctx.storage.put('job', updated);
-        return json({ claimed: true, status: updated.status });
-      }
-      return json({ claimed: false, status: job.status });
-    }
-    if (request.method === 'GET') return json(await this.ctx.storage.get('job') || { status: 'unknown' });
-    return json({ error: 'Method not allowed' }, 405);
-  }
+  fetch(request) { return handleRelayJobState(this.ctx, request); }
   async alarm() {
     const job = await this.ctx.storage.get('job');
     if (!job || !['submitted', 'pending'].includes(job.status)) return;
     try {
       const { publicClient } = clients(this.env);
       const receipt = await publicClient.getTransactionReceipt({ hash: job.polygonTxHash });
-      const status = receipt.status === 'success' ? 'complete' : 'refund_review';
-      await this.ctx.storage.put('job', { ...job, status });
+      if (receipt.status === 'reverted') {
+        await this.ctx.storage.put('job', { ...job, status: 'refund_review' });
+        return;
+      }
+      const after = await publicClient.readContract({ address: job.aToken, abi: usdtAbi, functionName: 'balanceOf', args: [job.owner] });
+      if (relaySupplyPositionMatches({ receipt, hash: job.polygonTxHash, relayer: job.relayer, pool: POOL, before: job.aTokenBefore, after, amount: job.amount })) {
+        await this.ctx.storage.put('job', { ...job, status: 'complete' });
+        return;
+      }
+      const attempts = Number(job.verifyAttempts || 0) + 1;
+      const status = attempts >= 24 ? 'position_review' : 'pending';
+      await this.ctx.storage.put('job', { ...job, status, verifyAttempts: attempts });
+      if (status === 'pending') await this.ctx.storage.setAlarm(Date.now() + 15000);
     } catch {
-      await this.ctx.storage.put('job', { ...job, status: 'pending' });
-      await this.ctx.storage.setAlarm(Date.now() + 15000);
+      const attempts = Number(job.verifyAttempts || 0) + 1;
+      const status = attempts >= 24 ? 'position_review' : 'pending';
+      await this.ctx.storage.put('job', { ...job, status, verifyAttempts: attempts });
+      if (status === 'pending') await this.ctx.storage.setAlarm(Date.now() + 15000);
     }
   }
 }
 
 export class PaymentClaims extends DurableObject {
-  async fetch(request) {
-    if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
-    const { hash, quoteId } = await request.json();
-    const key = `nim:${hash.replace(/^0x/i, '').toLowerCase()}`;
-    const existing = await this.ctx.storage.get(key);
-    if (existing) return json({ claimed: existing === quoteId });
-    await this.ctx.storage.put(key, quoteId);
-    return json({ claimed: true });
-  }
+  fetch(request) { return handlePaymentClaim(this.ctx, request); }
 }
 
 export default {
@@ -179,10 +134,7 @@ export default {
         return json({ error: 'Choose a valid positive goal and a future date.' }, 400);
       }
       const message = goalMessage({ owner, nonce, action, asset, targetRaw: action === 'save' ? String(targetRaw) : '', date: action === 'save' ? date : '' });
-      let recovered;
-      try { recovered = await recoverMessageAddress({ message, signature }); }
-      catch { return json({ error: 'Wallet signature could not be verified.' }, 401); }
-      if (recovered.toLowerCase() !== owner.toLowerCase()) return json({ error: 'Wallet signature does not match this address.' }, 401);
+      if (!await signatureMatchesOwner(message, signature, owner)) return json({ error: 'Wallet signature could not be verified for this address.' }, 401);
       const stub = env.RELAY_JOBS.get(env.RELAY_JOBS.idFromName(`goals:${owner.toLowerCase()}`));
       const goal = { asset, targetRaw: String(targetRaw || ''), date: String(date || '') };
       return stub.fetch('https://goals/access', { method: 'POST', body: JSON.stringify({ nonce, action, goal }) });
@@ -242,11 +194,7 @@ export default {
         const quote = await (await jobStub.fetch('https://relay/job')).json();
         if (!['awaiting_nim', 'nim_pending'].includes(quote.status)) return json({ status: quote.status, polygonTxHash: quote.polygonTxHash || null }, 409);
         const tx = await nimiqRpc(env, 'getTransactionByHash', [body.nimTxHash.replace(/^0x/i, '').toUpperCase()]);
-        const data = tx?.recipientData?.replace(/^0x/i, '').toLowerCase();
-        const expectedMemo = [...new TextEncoder().encode(quote.memo)].map((b) => b.toString(16).padStart(2, '0')).join('');
-        const sameRecipient = String(tx?.to || '').replace(/\s/g, '').toUpperCase() === String(env.NIM_FEE_ADDRESS).replace(/\s/g, '').toUpperCase();
-        if (!tx || tx.executionResult !== true || !sameRecipient || String(tx.value) !== quote.fee || data !== expectedMemo || !tx.blockHeight) return json({ error: 'NIM payment is not included or does not match the quoted recipient, amount, and memo.' }, 409);
-        if (quote.status === 'awaiting_nim' && quote.expiresAt < Date.now() && Number(tx.timestamp) > quote.expiresAt) return json({ error: 'This quote expired before the NIM payment. Contact support if you already sent funds.' }, 409);
+        if (!nimPaymentMatchesQuote(tx, quote, env.NIM_FEE_ADDRESS)) return json({ error: 'NIM payment is not included or does not match the quoted recipient, amount, memo, execution result, or quote expiry.' }, 409);
         const paymentLock = await (await jobStub.fetch('https://relay/job', { method: 'POST', body: JSON.stringify({ paymentHash: body.nimTxHash, finalized: false }) })).json();
         if (!paymentLock.claimed) return json({ error: 'A different NIM payment is already linked to this quote.' }, 409);
         const batch = await nimiqRpc(env, 'getBatchAt', [Number(tx.blockHeight)]);
@@ -264,18 +212,36 @@ export default {
           await jobStub.fetch('https://relay/job', { method: 'PUT', body: JSON.stringify({ ...quote, status: 'payment_reused' }) });
           return json({ error: 'This NIM payment was already used for a different quote.' }, 409);
         }
-        const paid = { ...quote, status: 'relaying', nimTxHash: body.nimTxHash };
-        await jobStub.fetch('https://relay/job', { method: 'PUT', body: JSON.stringify(paid) });
         const { account, publicClient, walletClient } = clients(env);
+        const asset = TOKENS[quote.asset || 'usdt'];
+        if (!asset) return json({ status: 'refund_review', message: 'NIM payment verified, but the quoted token is unsupported. Contact support for manual review.' }, 409);
+        let aTokenBefore;
         try {
-          const asset = TOKENS[quote.asset || 'usdt'];
-          if (!asset) throw new Error('Quoted token is unsupported.');
+          aTokenBefore = await publicClient.readContract({ address: asset.aToken, abi: usdtAbi, functionName: 'balanceOf', args: [quote.owner] });
+        } catch {
+          await jobStub.fetch('https://relay/job', { method: 'PUT', body: JSON.stringify({ ...quote, status: 'refund_review', nimTxHash: body.nimTxHash }) });
+          return json({ status: 'refund_review', message: 'NIM payment verified, but the starting Aave position could not be read. Contact support for manual review.' }, 503);
+        }
+        const paid = { ...quote, status: 'relaying', nimTxHash: body.nimTxHash, aToken: asset.aToken, aTokenBefore: aTokenBefore.toString(), amount: quote.amount, relayer: account.address, verifyAttempts: 0 };
+        await jobStub.fetch('https://relay/job', { method: 'PUT', body: JSON.stringify(paid) });
+        try {
           const hash = await walletClient.writeContract({ address: POOL, abi: poolAbi, functionName: 'supplyWithPermit', args: [asset.address, BigInt(quote.amount), quote.owner, 0, BigInt(quote.permit.deadline), Number(quote.permit.v), quote.permit.r, quote.permit.s] });
           await jobStub.fetch('https://relay/job', { method: 'PUT', body: JSON.stringify({ ...paid, status: 'submitted', polygonTxHash: hash }) });
           const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 }).catch(() => null);
-          const result = receipt?.status === 'success' ? { ...paid, status: 'complete', polygonTxHash: hash } : receipt?.status === 'reverted' ? { ...paid, status: 'refund_review', polygonTxHash: hash } : { ...paid, status: 'pending', polygonTxHash: hash };
+          let verified = false;
+          if (receipt?.status === 'success') {
+            try {
+              const after = await publicClient.readContract({ address: asset.aToken, abi: usdtAbi, functionName: 'balanceOf', args: [quote.owner] });
+              verified = relaySupplyPositionMatches({ receipt, hash, relayer: account.address, pool: POOL, before: aTokenBefore, after, amount: quote.amount });
+            } catch { /* Leave the job pending for the Durable Object verifier. */ }
+          }
+          const result = receipt?.status === 'reverted'
+            ? { ...paid, status: 'refund_review', polygonTxHash: hash }
+            : verified
+              ? { ...paid, status: 'complete', polygonTxHash: hash }
+              : { ...paid, status: 'pending', polygonTxHash: hash, verifyAttempts: 0 };
           await jobStub.fetch('https://relay/job', { method: 'PUT', body: JSON.stringify(result) });
-          return json({ status: result.status, polygonTxHash: hash });
+          return json({ status: result.status, polygonTxHash: hash, message: result.status === 'complete' ? undefined : result.status === 'pending' ? 'Polygon receipt found. Waiting to verify the resulting Aave position; do not pay again.' : undefined });
         } catch {
           await jobStub.fetch('https://relay/job', { method: 'PUT', body: JSON.stringify({ ...paid, status: 'refund_review' }) });
           return json({ status: 'refund_review', message: 'NIM payment verified, but supply did not complete. Contact support for manual review.' }, 502);

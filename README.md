@@ -88,9 +88,29 @@ The two videos show the same Aave-focused product in its two supported contexts.
 
 - [Current inside Nimiq Pay (mobile)](https://youtu.be/0zSfe1G3I2w) — wallet connection, Aave market and position, supply, withdrawal, and goal flow.
 - [Current web demo (submitted)](https://youtu.be/EDPMHaYVrj0) — browser experience submitted for the project review.
-- [Narrated, animated Nimiq Pay walkthrough](video_work/current-nimiqpay-animated.mp4) — edited mobile recording with Ezinne narration and motion graphics inspired by the MIT-licensed [Motion Canvas examples](https://github.com/motion-canvas/examples). This file is local; include it in a GitHub push for the link to work there.
 
 Each recording documents a particular session; neither promises future service availability, market liquidity, or rates.
+
+### Four wallet-position snapshots
+
+These four screenshots were supplied as evidence of Current being used with Polygon USDT positions. Each separates the **scaled principal basis** shown by Aave from Current's **estimated accrued interest**; neither figure is a statement of realized profit or a promise of future yield. The screenshots do not display wallet addresses, so they show four position views but do not independently prove four unique on-chain identities.
+
+| Snapshot | Supplied position | Scaled principal basis | Accrued interest estimate | POL shown for gas |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 1.700329 USDT | 1.378298 USDT | 0.322031 USDT | 2.24217 POL |
+| 2 | 1.300318 USDT | 1.054047 USDT | 0.246271 USDT | 7.32106 POL |
+| 3 | 10.542777 USDT | 8.546045 USDT | 1.996732 USDT | 6.49733 POL |
+| 4 | 1.700003 USDT | 1.378034 USDT | 0.321969 USDT | 2.60992 POL |
+
+These are captured values from the screenshots, not live balances. Current derives the interest estimate by comparing the aToken balance with its scaled balance; aToken transfers can affect that principal basis.
+
+| Position view 1 | Position view 2 |
+| --- | --- |
+| ![Current Polygon position snapshot 1 showing supplied USDT, principal basis, estimated accrued interest, and POL balance](<Screenshot 2026-11-10 111647.png>) | ![Current Polygon position snapshot 2 showing supplied USDT, principal basis, estimated accrued interest, and POL balance](<Screenshot 2026-11-10 111710.png>) |
+
+| Position view 3 | Position view 4 |
+| --- | --- |
+| ![Current Polygon position snapshot 3 showing supplied USDT, principal basis, estimated accrued interest, and POL balance](<Screenshot 2026-11-10 111723.png>) | ![Current Polygon position snapshot 4 showing supplied USDT, principal basis, estimated accrued interest, and POL balance](<Screenshot 2026-11-10 111741.png>) |
 
 ## Run locally
 

@@ -576,7 +576,6 @@ body.is-busy #connect-top::after { content: ""; width: 11px; height: 11px; borde
 }
 .dialog-actions #cancel-review { grid-column:1; grid-row:1; }
 .dialog-actions #confirm-action { grid-column:2; grid-row:1; }
-.dialog-actions #permit-fallback:not([hidden]) { grid-column:1 / -1; grid-row:2; }
 @media (max-width: 390px) {
   .dashboard-page .page-shell { padding-right: 11px; padding-left: 11px; }
   .dashboard-page .intro-copy { padding-right: 17px; padding-left: 17px; }

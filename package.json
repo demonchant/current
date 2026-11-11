@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node server.mjs",
     "start": "node server.mjs",
-    "test": "node --test-isolation=none --test",
+    "test": "node --test-isolation=none --test tests/domain.test.mjs tests/worker.test.mjs",
     "e2e": "playwright test"
   },
   "dependencies": {
