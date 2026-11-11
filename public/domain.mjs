@@ -158,7 +158,7 @@ export function validateWithdrawTransaction(tx, from, amountRaw, asset = ASSETS.
 export function amountFromInput(input, mode, walletBalance, positionBalance, decimals = TOKEN_DECIMALS, symbol = 'USDT') {
   const amount = parseTokenAmount(input, decimals);
   const ceiling = mode === 'supply' ? BigInt(walletBalance ?? 0) : BigInt(positionBalance ?? 0);
-  if (amount > ceiling) throw new Error(mode === 'supply' ? `Your ${symbol} balance changed after the wallet action. Enter an amount within your current available balance.` : `Your Aave ${symbol} position changed after the wallet action. Enter an amount within your current supplied balance.`);
+  if (amount > ceiling) throw new Error(mode === 'supply' ? `This amount is above your available ${symbol} balance. Refresh your wallet or enter a smaller supply amount.` : `This amount is above your supplied ${symbol} balance. Refresh your Aave position or enter a smaller withdrawal amount.`);
   return amount;
 }
 

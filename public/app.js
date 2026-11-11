@@ -589,6 +589,18 @@ async function polygonRead(method, params) {
       errors.push(`${new URL(url).hostname}: ${String(error?.message || 'network request failed').replace(/[\r\n\u0000-\u001f]/g, ' ').slice(0, 120)}`);
     }
   }
+  const injected = provider();
+  if (injected) {
+    try {
+      const chain = parseChainId(await injected.request({ method: 'eth_chainId' }));
+      if (chain === CHAIN_ID) {
+        const result = await injected.request({ method, params });
+        if (result !== undefined) return result;
+      }
+    } catch (error) {
+      errors.push(`Connected wallet RPC: ${String(error?.message || 'request failed').replace(/[\r\n\u0000-\u001f]/g, ' ').slice(0, 140)}`);
+    }
+  }
   const reason = errors.find((message) => /execution reverted|revert|insufficient|balance|liquidity/i.test(message)) || errors.at(-1);
   throw new Error(reason ? `Polygon RPC could not complete the request (${reason}).` : 'Polygon RPC could not complete the request.');
 }
@@ -677,7 +689,7 @@ function makeSupplyWithPermitTransaction(amount, permit, asset = currentAsset())
   };
 }
 
-async function refreshWallet() {
+async function refreshWallet({ deferControls = false } = {}) {
   const injected = provider();
   if (!injected || !state.wallet) return;
   const asset = currentAsset();
@@ -711,7 +723,7 @@ async function refreshWallet() {
   $('gas-balance').textContent = `${formatTokenAmount(nativeBalance, 18, 5)} POL`;
   $('available-label').textContent = state.mode === 'supply' ? `${formatTokenAmount(tokenBalance, asset.decimals)} ${asset.symbol} available` : `${formatTokenAmount(aTokenBalance, asset.decimals)} ${asset.symbol} supplied`;
   setWalletMessage(state.walletChainId === CHAIN_ID ? 'Position read directly from Polygon' : 'Balance read from Polygon; switch the wallet to Polygon before transacting.');
-  renderWalletControls();
+  if (!deferControls) renderWalletControls();
 }
 
 function renderWalletHeader() {
@@ -1176,8 +1188,8 @@ function rpcQuantity(value) {
 async function estimatePolygonGas(transaction) {
   const estimateErrors = [];
   const candidates = [
-    () => polygonRead('eth_estimateGas', [transaction]),
     () => provider()?.request({ method: 'eth_estimateGas', params: [transaction] }),
+    () => polygonRead('eth_estimateGas', [transaction]),
   ];
   for (const estimateRequest of candidates) {
     try {
@@ -1197,7 +1209,7 @@ async function estimatePolygonGas(transaction) {
 
 async function waitForReceipt(txHash) {
   for (let attempt = 0; attempt < 30; attempt++) {
-    const receipt = await polygonRead('eth_getTransactionReceipt', [txHash]);
+    const receipt = await readTransactionReceipt(txHash);
     if (receipt && receipt.blockNumber) {
       if (receipt.transactionHash?.toLowerCase() !== txHash.toLowerCase()) throw new Error('Polygon returned a receipt for a different transaction.');
       if (receipt.status === '0x0' || receipt.status === 0) throw new Error('The Polygon transaction reverted. No success was recorded.');
@@ -1207,6 +1219,20 @@ async function waitForReceipt(txHash) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
   return null;
+}
+
+async function readTransactionReceipt(txHash) {
+  const injected = provider();
+  if (injected) {
+    try {
+      if (parseChainId(await injected.request({ method: 'eth_chainId' })) === CHAIN_ID) {
+        const receipt = await injected.request({ method: 'eth_getTransactionReceipt', params: [txHash] });
+        if (receipt) return receipt;
+      }
+    } catch { /* Try the public Polygon RPCs if the wallet RPC cannot read this receipt. */ }
+  }
+  try { return await polygonRead('eth_getTransactionReceipt', [txHash]); }
+  catch { return null; }
 }
 
 function savedPending() {
@@ -1340,6 +1366,8 @@ async function confirmDialogAction() {
       $('dialog-status').textContent = `${mode === 'supply' ? 'Supply' : 'Withdrawal'} confirmed. Polygon receipt and updated ${asset.aTokenSymbol} balance both verified.`;
       $('dialog-status').classList.remove('is-error');
       showToast(`${mode === 'supply' ? 'Supply' : 'Withdrawal'} verified from the Polygon receipt and wallet position.`);
+      $('amount-input').value = '';
+      updateAmountSummary();
       await refreshWallet();
       $('confirm-action').querySelector('span').textContent = 'Close';
       $('confirm-action').disabled = false;
@@ -1386,7 +1414,7 @@ function setTransactionLink(hash) {
 async function reconcilePosition({ hash, mode, from, amount, before, assetId = 'usdt' }) {
   const asset = getAsset(assetId);
   if (!provider() || state.wallet?.toLowerCase() !== from.toLowerCase()) return false;
-  const receipt = await polygonRead('eth_getTransactionReceipt', [hash]);
+  const receipt = await readTransactionReceipt(hash);
   if (!receipt || (receipt.status !== '0x1' && receipt.status !== 1) ||
       receipt.transactionHash?.toLowerCase() !== hash.toLowerCase() ||
       receipt.from?.toLowerCase() !== from.toLowerCase() ||
@@ -1424,7 +1452,7 @@ async function confirmReconciliation() {
   $('confirm-action').setAttribute('aria-busy', 'true');
   try {
     await recheckBeforeWrite();
-    const receipt = await polygonRead('eth_getTransactionReceipt', [pending.hash]);
+    const receipt = await readTransactionReceipt(pending.hash);
     if (!receipt) {
       $('dialog-status').textContent = 'No receipt yet. It remains pending; do not submit it again.';
       setTransactionLink(pending.hash);
@@ -1586,8 +1614,8 @@ async function refreshAfterWalletReturn(snapshot, attempt = 0) {
   state.walletReturnSnapshot = null;
   if (!state.wallet || snapshot.wallet?.toLowerCase() !== state.wallet.toLowerCase()) return;
   try {
-    await refreshWallet();
-    if (!state.walletData || state.mode !== snapshot.mode) return;
+    await refreshWallet({ deferControls: true });
+    if (!state.walletData || state.mode !== snapshot.mode) { renderWalletControls(); return; }
     const supplyCompleted = snapshot.mode === 'supply' &&
       snapshot.tokenBalance - state.walletData.tokenBalance >= snapshot.amount &&
       expectedBalanceDelta(snapshot.aTokenBalance, state.walletData.aTokenBalance, snapshot.amount, 'supply');
@@ -1610,7 +1638,11 @@ async function refreshAfterWalletReturn(snapshot, attempt = 0) {
       setWalletMessage(`${label} detected. Your refreshed Polygon balances confirm the transaction.`);
       showToast(`${label} detected and verified from your updated Polygon balances.`, 'success');
     }
-  } catch (error) { setWalletMessage(error.message || 'Could not refresh your Polygon balance.', true); }
+    renderWalletControls();
+  } catch (error) {
+    renderWalletControls();
+    setWalletMessage(error.message || 'Could not refresh your Polygon balance.', true);
+  }
 }
 async function init() {
   initMobilePages();
