@@ -1,134 +1,109 @@
 # Current
 
-**Current helps people turn an existing stablecoin balance into a deliberate, trackable savings habit.** Built for Nimiq Pay and Polygon, it lets users supply native USDC or USDT0 to Aave V3, see the live variable rate and their on-chain position, set a goal that follows them across devices, and verify what happened after each transaction.
+**Move from a Polygon stablecoin balance to a verified Aave position, inside Nimiq Pay.** Current brings Aave V3 market information, wallet balances, transaction review, supply and withdrawal, and post-transaction verification into one mobile-friendly experience. It supports native Polygon USDC and the Polygon USDT reserve surfaced as USDT0 in Aave.
 
-[Open Current](https://current.oladapodamiey.workers.dev/) · [Launch through Nimiq Pay](https://nimpay.app/miniapps/open/current.oladapodamiey.workers.dev) · [Watch the walkthrough](https://youtu.be/EDPMHaYVrj0) · [Source code](https://github.com/demonchant/current)
+[Open Current on the web](https://current.oladapodamiey.workers.dev/) · [Open in Nimiq Pay](https://nimpay.app/miniapps/open/current.oladapodamiey.workers.dev) · [Source code](https://github.com/demonchant/current)
 
-> Current interacts with real Polygon contracts. Aave rates vary and returns are not guaranteed. Users remain responsible for checking the asset, network, wallet prompt, and network fee. Smart contract, market, stablecoin, liquidity, and network risks apply.
+> Current sends real transactions to Polygon and Aave V3. Supply rates vary and are not promised. Stablecoins can lose their peg, withdrawals depend on market liquidity, and smart-contract, token, wallet, RPC, relayer, and network risks apply. Review every wallet prompt.
 
-## The problem Current addresses
+## The problem: stablecoins are in the wallet, but the next step is hard
 
-For a Nigerian saver who chooses to hold some savings in digital dollars, having a stablecoin balance is only one part of the job. Turning that balance into a consistent savings plan can mean jumping between a wallet, a lending-market page, network-fee instructions, and a block explorer. It is hard to judge the current rate, see what is already earning, understand each approval, or tell whether a transaction really completed. Savings goals can also disappear into notes or stay on one device, disconnected from the actual on-chain position.
+Imagine Amara, a young designer in Lagos who has just been paid for a freelance project. She keeps part of her balance in USDC because she wants to use it for a laptop upgrade in a few months. The funds are already in her Polygon wallet. She is not looking for another token, a complicated trading strategy, or a promise that her money will grow. She wants to understand whether she can supply the stablecoins to a lending market, what the current rate means, what she must approve, what network fee she will pay, and how to tell that the deposit actually arrived.
 
-This is a practical access and follow-through problem: useful tools exist, but the path from money set aside to a savings action that is understandable and easy to track is fragmented. It matters in a country where people make careful choices about how to save amid changing prices and exchange rates, but Current does not solve inflation, provide a naira on-ramp, or guarantee that a stablecoin will keep its value.
+Today, getting those answers can mean moving between a wallet, a protocol interface, token documentation, a gas guide, and a block explorer. Each screen assumes the user already knows which network and token they are using. An approval prompt can look like a second deposit. A wallet saying “confirmed” does not explain whether the Aave position changed. On a phone, switching between apps and trying to retain all that context makes a straightforward action feel risky. If Amara gives up, the stablecoins remain idle—not because she chose that outcome after comparing options, but because the path to make an informed choice was too fragmented.
 
-Current brings the decision, action, and progress check into one Nimiq Pay Mini App. It shows the selected USDC or USDT0 market rate beside the user's Polygon balance and Aave position, lets the user set a cross-device goal, explains the exact authorization, and checks the on-chain receipt and resulting position. For supported Nimiq Pay sessions, an optional NIM-paid gas route can let the relayer cover Polygon gas for a disclosed NIM fee. The user remains in control of the wallet and confirms each action.
+That is the specific problem Current addresses: **the usability and confidence gap between holding a supported Polygon stablecoin and managing that asset in Aave V3.** This is an illustrative user story, not a claim that every person has the same finances or experience.
 
-## How Current responds
+## The solution: one continuous Aave journey
 
-Current lets the user select native USDC or USDT0 on Polygon and reads that asset's Aave V3 reserve, variable supply APY, wallet balance, POL gas balance, and aToken position. It checks the selected token and aToken against fixed contract addresses, then presents an explicit review before a wallet action. After submission it waits for the chain receipt and checks the matching position before showing completion. The standard route needs POL for Polygon gas; the optional NIM relay charges a separately displayed NIM fee and is available only when the Worker and Nimiq Pay payment provider are ready.
+Current keeps the decision and the action together. From Nimiq Pay, a user can see the selected asset's Aave supply rate and reserve status, inspect the wallet balance and existing Aave position, choose an amount, understand the authorization and gas path, review the transaction, and then check the Polygon receipt and updated position. Supply and withdrawal both happen through Aave V3; Current does not create a separate yield product or custody user funds.
 
-The **Savings Goal** adds a lightweight follow-up loop. A user sets a target and date for the selected stablecoin; Current shows progress against the matching on-chain aToken balance and offers an illustrative projection using that reserve's current Aave rate. Goals are stored by the Current Worker and wallet address, separately for USDC and USDT0. Reading or changing a goal requires a fresh, one-time wallet signature over a clear action and nonce; no transaction or token approval is involved. The goal is not encrypted from the service operator, so it contains no information beyond the target and date. The progress bar follows the on-chain position; projected yield is only an estimate and is never guaranteed.
+The result is not a claim that Aave is risk-free or that supplying is right for everyone. It is a clearer route for someone who has already decided to explore Aave: fewer context switches, a more legible transaction, and evidence of what happened afterward. Users keep control of the wallet and decide whether to proceed.
 
-Together, the market view answers “what is available now?”, the position answers “where am I today?”, and the goal answers “what am I working toward?”. Users can return to refresh the market and wallet data as rates and balances change.
+### How the flow works
 
-## What the app does
+1. **Understand the market.** Current reads Aave V3 reserve data for Polygon and displays the selected asset's variable supply APY and availability. If required market data is unavailable or does not match the configured market, the app surfaces that state and blocks dependent actions.
+2. **Understand the position.** With a connected Polygon wallet, Current reads the selected token balance, aToken balance, allowance, and POL balance directly from Polygon. This shows what can be supplied, what is already supplied, and whether the standard transaction path has gas.
+3. **Review the exact action.** The user selects USDT0 or native USDC, enters an amount, and reviews the asset, amount, Aave destination, approval, and gas or relay fee before opening the wallet.
+4. **Authorize with bounded scope.** Where supported, supply uses a short-lived EIP-2612 permit for the exact amount and Aave Pool spender, followed by one supply transaction. If typed-data signing is unavailable, Current offers an exact-amount approval and then asks for a separate supply confirmation.
+5. **Verify the outcome.** Current waits for the Polygon transaction receipt, refreshes the wallet data, and checks the position change before presenting success. A wallet prompt alone is never treated as proof that the position changed.
+6. **Manage the position.** The user can return to inspect the live position and withdraw through Aave. Withdrawal is a direct Polygon transaction and requires POL for gas; it does not use the NIM relay.
 
-- Reads native Polygon USDC and USDT0 Aave V3 reserves, live supply APY, and reserve status from Aave's market API.
-- Connects through the EVM provider exposed by the Nimiq Pay host and reads balances directly from Polygon.
-- Shows the selected stablecoin available to supply, its matching aToken position, and POL available for network fees.
-- Provides an “If today held” estimate and locally observed rate history to help put a variable APY in context.
-- Lets each wallet save separate USDC and USDT0 targets on the Current backend and see progress from the corresponding live aToken balance on any device after wallet authorization.
-- Prepares supply and withdrawal transactions for the exact amount entered and shows a review before wallet authorization.
-- Uses each selected Polygon token's EIP-2612 permit with Aave's `supplyWithPermit` when approval is needed: one short-lived exact-amount signature, then one on-chain supply transaction. Native USDC uses its version 2, chain-ID EIP-712 domain; USDT0 uses its version 1, salt-based domain. Users can choose exact-amount approval if typed-data signing is unavailable.
-- Offers optional NIM-paid Polygon gas inside Nimiq Pay for either selected asset. The app displays the operator-set NIM fee, recipient, and unique memo; the Worker binds the quote to the wallet, selected token, exact amount, and permit before its funded Polygon relayer submits `supplyWithPermit`.
-- Checks the Polygon transaction receipt and updated position before reporting a completed action; links to PolygonScan for independent inspection.
+### One focused product, supporting features
 
-Current is non-custodial software. It does not collect seed phrases or private keys. Wallet permissions and transaction confirmations are handled by the wallet host. Review every prompt; no app or wallet can guarantee a protocol outcome or investment return.
+The product is the Aave journey above. The additional features support that same job:
 
-## User journeys and transaction behavior
+- **NIM-paid supply gas:** for compatible Nimiq Pay sessions, the user can pay a disclosed NIM fee while the configured relayer submits the Polygon supply. This helps users who hold NIM but do not have POL available for that supply. The relay is optional, guarded by live Worker status, and supply-only. It does not remove Aave, stablecoin, or relayer risk; withdrawal still needs POL.
+- **Position goal:** a per-wallet, per-asset target and date let users track an Aave position over time. Progress is based on the on-chain aToken balance. It is a follow-through aid for the Aave position, not a separate savings or financial product.
+- **Naira context:** an indicative USD/NGN equivalent gives local context for a USD-denominated position. It is not an exchange, naira on-ramp, executable quote, or promise of protection from inflation or currency movement.
 
-### Standard supply
+## Why this fits the Aave track
 
-1. Connect a Polygon wallet and wait for the live wallet and Aave market data.
-2. Select USDT0 or native USDC, then enter an amount. Current checks the amount against that token balance and the selected Aave reserve.
-3. Review the exact amount and authorization. If the wallet supports typed-data signing, the normal route requests a short-lived permit for that exact amount and the Aave Pool spender, then submits one supply transaction. If it cannot sign typed data, the user can choose exact-amount approval followed by supply.
-4. Confirm the transaction in the wallet. Current waits for its receipt and refreshes the position before reporting success.
+Current is built around using Aave V3 on Polygon, not merely displaying a token balance or adding an unrelated dashboard. Aave is the actual lending protocol in the core user journey:
 
-### Withdrawal
+- The market view reads Aave's Polygon market and selected reserve data, including variable supply APY and reserve availability.
+- The wallet view identifies the selected underlying asset and its corresponding Aave aToken position.
+- Supply calls Aave's Pool for the exact selected asset and amount. The permit path uses `supplyWithPermit`; the fallback is a bounded token approval followed by supply.
+- Withdrawal calls Aave's Pool directly for the selected asset.
+- The app verifies the Aave position against Polygon state after transaction confirmation.
 
-Withdrawal is a direct Aave withdrawal. It does not use the NIM relay and does not change the relay's supply-only behavior. The wallet confirms the Polygon transaction and Current checks the result and updated position.
+This makes the protocol useful to a Nimiq Pay user at the point where the decision becomes an action: understand the current Aave option, move into a position with clear authorization, and check the result without losing the wallet context. Current's contribution to the track is the complete, mobile-ready interaction around Aave—not a claim that it improves Aave's rate, changes the protocol, or guarantees adoption or earnings.
 
-### Optional NIM-paid gas supply
+## Assets, market data, and transaction design
 
-The relay is an optional supply path for compatible Nimiq Pay sessions. Its button is shown only while Supply is selected. It remains disabled with a specific explanation if the relay Worker is not configured, the wallet/network is unavailable, the host cannot send a NIM payment with data, the amount or live market is unavailable, or another operation is in progress. The Worker must be configured; the browser must never assume relay availability.
+Current targets **Polygon PoS mainnet (chain ID 137)** and two Aave reserves:
 
-When available, the flow requests a quote, prepares and simulates the exact supply, obtains the user's permit, then shows a review containing the NIM fee, recipient, and unique memo before the user confirms a NIM payment. The Worker verifies the payment and permit before its relayer submits the Polygon supply. The fee is operator-set and is not a live Polygon gas quote. A verified NIM payment followed by a failed supply may require manual support review; no automatic refund is promised. If status is pending, check the existing quote/status before considering another payment.
+| Asset shown in Current | Polygon underlying | Aave position token |
+| --- | --- | --- |
+| USDT0 | Polygon USDT at [`0xc2132D05D31c914a87C6611C10748AEb04B58e8F`](https://polygonscan.com/address/0xc2132D05D31c914a87C6611C10748AEb04B58e8F) | aUSDT: [`0x6ab707Aca953eDAeFBc4fD23bA73294241490620`](https://polygonscan.com/address/0x6ab707Aca953eDAeFBc4fD23bA73294241490620) |
+| Native USDC | Circle native Polygon USDC at [`0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`](https://polygonscan.com/address/0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359) | aUSDC: [`0xA4D94019934D8333Ef880ABFFbF2FDd611C762BD`](https://polygonscan.com/address/0xA4D94019934D8333Ef880ABFFbF2FDd611C762BD) |
 
-## Data, privacy, and security
+Both assets use six decimals. Current validates the Aave market, chain, underlying token, decimals, and matching aToken before enabling dependent actions. USDC refers to the native Polygon token, not USDC.e. The Aave Pool is [`0x794a61358D6845594F94dc1DB02A252b5b4814aD`](https://polygonscan.com/address/0x794a61358D6845594F94dc1DB02A252b5b4814aD). Market data comes from the [Aave V3 GraphQL API](https://api.v3.aave.com/graphql); wallet balances and transaction results are read through the connected Polygon provider.
 
-- Wallet balances, positions, and submitted transactions are associated with the connected public address and Polygon. Never share a seed phrase or private key with Current.
-- Rate history remains in browser storage. Savings goals are stored in the wallet's per-address Durable Object on Cloudflare and synchronized across devices when the same wallet connects. A fresh one-time `personal_sign` message authorizes each read, save, or delete; the message is not a transaction and grants no token allowance. The backend can see the wallet address, selected asset, target amount, and date, so users should not put sensitive notes in a goal.
-- Market data is requested from Aave's public GraphQL API. Polygon reads and writes use the connected wallet/provider and configured RPC infrastructure.
-- The optional relay uses Cloudflare Worker runtime configuration and Durable Objects for quote/job state and payment-hash reuse protection. Do not put secrets in browser code, source control, screenshots, issue reports, or this README.
-- Relay signing keys and any credential-bearing RPC URLs belong in Cloudflare Worker secrets. Keep the relayer wallet dedicated and funded only as operationally required; monitor its POL balance and relay status.
-- Review the destination, network, amount, fee, and calldata details presented by the wallet. A completed wallet prompt is not proof of a successful protocol transaction; wait for Current's receipt and position checks.
+### Supply authorization
 
-Current is software for interacting with third-party smart contracts, not a bank, custodian, broker, or source of guaranteed yield. Aave rates can change, and protocol, token, liquidity, wallet, RPC, smart-contract, relayer, and network risks remain. Use only funds you can afford to expose to those risks.
+For supported wallets, Current builds a typed EIP-2612 permit for the selected token, wallet, exact amount, Aave Pool spender, nonce, and short expiry. Polygon USDT0's permit domain uses version 1 and a `salt`-encoded chain ID; native Polygon USDC uses version 2 and an explicit chain ID. The app validates the signature and transaction fields before requesting wallet submission. The permit authorizes the selected spend; the subsequent Aave supply is a separate on-chain action. If the wallet cannot sign typed data, the app falls back to an exact-amount approval and a separate supply transaction. Standard supply and all withdrawals require POL for Polygon gas.
 
-## Fit for Nimiq Pay Earn
+### Every transaction and signature
 
-Current uses Nimiq Pay as the user's wallet-facing entry point and Aave V3 as the Polygon lending market. The app keeps the Earn journey together: discover the current rate, connect and inspect a real position, choose a target, review an exact supply authorization, and confirm the resulting on-chain position. The savings goal encourages users to revisit their progress while keeping the underlying balance and every transaction in the user's wallet control.
+| User action | What is signed or sent | Network and fee | What Current verifies |
+| --- | --- | --- | --- |
+| Standard supply with permit | The wallet signs a short-lived, exact-amount EIP-2612 permit (off-chain), then sends `supplyWithPermit` to the Aave V3 Pool. | Polygon; the supply transaction uses the user's POL. | The permit and transaction target, receipt, and resulting aToken position. |
+| Standard supply fallback | The wallet sends an exact-amount token approval, then separately sends the Aave supply transaction. | Two Polygon transactions; user pays POL for each. | Approval calldata and spender/amount, followed by supply receipt and position change. |
+| Withdrawal | The wallet sends a direct Aave Pool withdrawal for the selected asset and amount. | Polygon; user pays POL. | Transaction receipt and resulting position change. The NIM relay is not used. |
+| NIM-paid supply | The wallet signs the supply permit, then sends a NIM payment containing the quoted recipient and memo. After server-side payment verification, the relayer sends the Aave `supplyWithPermit` transaction. | Nimiq payment plus Polygon supply. The user pays the disclosed NIM fee; the relayer pays Polygon POL. | Worker validates quote, owner, token, amount, balance, permit, and payment; tracks the job and prevents payment-hash reuse. Current reports the Polygon result after receipt and position verification. |
+| Savings-goal access | The wallet signs a fresh `personal_sign` message for a goal read, save, or delete. | Wallet signature only; no blockchain transaction, gas, token approval, or asset transfer. | Worker verifies the wallet signature, action, and one-time nonce before accessing that wallet's goal. |
 
-## Product access and demo notes
+Approvals and signatures are not the same as supplying: an approval or permit authorizes a defined spend, while the Aave supply is the transaction that moves the selected asset into the protocol. Always inspect the wallet's own prompt. Transaction fees and status can differ by network conditions.
 
-- **Nimiq Pay Mini App:** [Launch Current](https://nimpay.app/miniapps/open/current.oladapodamiey.workers.dev)
-- **Live web deployment:** [current.oladapodamiey.workers.dev](https://current.oladapodamiey.workers.dev/)
-- **Walkthrough:** [Recorded Current demo](https://youtu.be/EDPMHaYVrj0)
-- **Project update:** [X post](https://x.com/thoyourbaby/status/2119029326611919338)
-- **GitHub:** [demonchant/current](https://github.com/demonchant/current)
+### NIM-paid supply and backend safeguards
 
-Use the Nimiq Pay launch link for the intended in-app wallet experience. The transaction integration is configured for Polygon PoS, chain ID 137. The browser deployment is useful for inspecting the interface; wallet actions need a compatible injected EVM provider.
+The NIM route is an optional way to pay the operational gas cost for a supply. The button appears only on Supply and remains disabled with a specific explanation if relay configuration/status, wallet/network, Nimiq Pay payment access, live market data, entered amount, or operation state is not ready. The client never overrides a missing Worker configuration.
 
-During the demo recording, Nimiq Pay showed USDT withdrawal/payment as temporarily unavailable. This is an upstream Nimiq Pay service limitation: the recording used a separate Polygon-compatible wallet to demonstrate the Current/Aave flow. Current does not control Nimiq Pay's USDT withdrawal service or represent that maintenance as a Current transaction failure. Wallet balances are per address and chain; funds held in a Nimiq Pay account will not appear in Current's Polygon balance unless they are available in the connected Polygon wallet.
+The Cloudflare Worker validates a short-lived quote against the wallet, token, amount, balance, and permit; simulates the intended Aave call; verifies the NIM payment details; and uses Durable Objects to track relay jobs and guard against reuse of a payment hash. Only then does the dedicated relayer submit the Polygon `supplyWithPermit` call. The NIM fee is operator-set, not a live Polygon gas quote. If payment is verified but the Aave supply fails, the job may require manual support review; the app does not promise an automatic refund. Users should not repeat a payment while its job is pending.
 
-Screenshots supplied by the builder show four different wallet addresses connected to Current, with funds still visible in those wallets.
+## Demo
 
-## Recorded on-chain demonstration
+The two videos show the same Aave-focused product in its two supported contexts. The **Nimiq Pay recording** demonstrates Current inside the mobile wallet host; the **web demo** is the version submitted for judging.
 
-The walkthrough shows the live app on Polygon, including a USDT supply, a separate withdrawal, and PolygonScan confirmation. The recorded withdrawal evidence is:
+- [Current inside Nimiq Pay (mobile)](https://youtu.be/0zSfe1G3I2w) — wallet connection, Aave market and position, supply, withdrawal, and goal flow.
+- [Current web demo (submitted)](https://youtu.be/EDPMHaYVrj0) — browser experience submitted for the project review.
+- [Narrated, animated Nimiq Pay walkthrough](video_work/current-nimiqpay-animated.mp4) — edited mobile recording with Ezinne narration and motion graphics inspired by the MIT-licensed [Motion Canvas examples](https://github.com/motion-canvas/examples). This file is local; include it in a GitHub push for the link to work there.
 
-| Field | Recorded result |
-| --- | --- |
-| Action | Withdraw 1.300011 USDT0 from Aave |
-| Network | Polygon PoS |
-| PolygonScan status | Success |
-| Transaction hash | `0x2c541c296b4d29f677ca248f95baaffbc34a24bf81cddbee06a0a27d51f67b6a` |
-| Block | `96758664` |
-
-These details describe the recorded transaction only. They do not describe a current wallet balance or guarantee future market conditions.
-
-## Network and contracts
-
-Current's live transaction path targets **Polygon PoS mainnet (chain ID 137)**. The USDC option is Circle's native Polygon USDC contract, not the bridged USDC.e asset; the market and displayed position are selected independently for each token.
-
-| Contract | Polygon address |
-| --- | --- |
-| USDT0 | `0xc2132D05D31c914a87C6611C10748AEb04B58e8F` |
-| Native Polygon USDC | `0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359` |
-| Aave V3 Pool | `0x794a61358D6845594F94dc1DB02A252b5b4814aD` |
-| Aave USDT reserve token (aUSDT) | `0x6ab707Aca953eDAeFBc4fD23bA73294241490620` |
-| Aave native USDC reserve token (aUSDC) | `0xA4D94019934D8333Ef880ABFFbF2FDd611C762BD` |
-| Aave market API | `https://api.v3.aave.com/graphql` |
-
-The standard supply path requires the selected token and POL for Polygon gas. When an allowance is needed, it requests a short-lived typed signature for the exact amount and Aave Pool spender, then asks the wallet to confirm one `supplyWithPermit` Polygon transaction. Native USDC uses EIP-2612 domain version 2 with Polygon chain ID 137; USDT0 uses its version 1 domain with the chain ID encoded as `salt`. If typed-data signing is unavailable, the user can choose exact-amount approval followed by a separate supply transaction. Withdrawal remains a direct Aave withdrawal action for the selected asset.
-
-Inside Nimiq Pay, users can alternatively choose **Supply with NIM-paid gas** when the relay is configured. The wallet signs an exact, short-lived permit for the selected token and a separate NIM payment with the displayed recipient and unique quote memo. The Cloudflare Worker binds the quote to the selected asset and simulates the exact Aave call before showing the payment prompt, then verifies the NIM transaction before relaying the supply. The NIM fee is fixed by the operator, not a live estimate of Polygon gas. If supply fails after NIM is received, the app reports **manual fee review**; it does not promise an automatic refund. Check every wallet prompt and never repeat a payment while relay status is pending. See the [Aave V3 Pool reference](https://www.aave.com/docs/aave-v3/smart-contracts/pool), [Polygon USDT0 EIP-2612 guidance](https://docs.usdt0.to/technical-documentation/token-features/eip-2612), [Circle USDC contract](https://github.com/circlefin/stablecoin-evm/blob/master/contracts/v2/FiatTokenV2_2.sol), and [Nimiq payment API](https://nimiq.dev/mini-apps/api-reference/nimiq-provider).
+Each recording documents a particular session; neither promises future service availability, market liquidity, or rates.
 
 ## Run locally
 
 Requirements: Node.js 24 or later and npm.
 
 ```sh
-npm install
+npm ci
 npm run dev
 ```
 
-Open `http://localhost:4173` for the landing page or `http://localhost:4173/app` for the app. No `.env` file is needed. Market data comes from Aave's public GraphQL API. Live wallet actions require a compatible injected wallet on Polygon with the required token and POL balance.
+Open `http://localhost:4173` for the landing page and `http://localhost:4173/app` for the app. No `.env` file is required for the local frontend. The deployed Cloudflare Worker is needed for cross-device goals and NIM relay APIs. Live wallet actions require a compatible injected EVM provider connected to Polygon, supported token balance, and POL for standard transaction gas.
 
-The local server serves the frontend and static assets; it does not automatically provide the Cloudflare Worker Durable Objects, cross-device savings-goal API, or a configured NIM relay. Backend goal synchronization and relay actions therefore require the deployed Worker and its `RELAY_JOBS` binding. Do not add secrets to a local file that could be committed.
-
-## Verification
+## Verify
 
 ```sh
 npm test
@@ -136,41 +111,39 @@ npx playwright install chromium
 npm run dev
 ```
 
-In a second terminal, run `npm run e2e`. Browser automation covers interface behavior and wallet-provider states; it does not sign or submit live financial transactions. The recorded walkthrough documents the live Polygon demonstration.
+In a second terminal, run `npm run e2e`. These checks exercise code and browser behavior; they do not sign live transactions or guarantee that a real wallet, RPC, market, or transaction will be available.
 
-For a local Worker bundle check without publishing it, run `npx wrangler deploy --dry-run`. This validates bundling and bindings but does not verify deployed secrets, live RPC access, wallet prompts, or on-chain transactions.
+To check the Worker bundle without publishing it:
 
-## Deploy
+```sh
+npx wrangler deploy --dry-run
+```
 
-The app, `/api/relay/*`, and wallet-authenticated `/api/goals/*` endpoints run in one Cloudflare Worker. Deploy with Wrangler authenticated to the account that owns the Worker:
+## Deploy and configure
+
+The Cloudflare Worker serves the static app plus `/api/relay/*` and `/api/goals/*` endpoints. Deploy from an authenticated environment with:
 
 ```sh
 npx wrangler deploy
 ```
 
-The NIM relay stays disabled until configured. The app requests `GET /api/relay/status`; the response exposes whether relay configuration is complete, the fee unit, and names of settings that are absent or fail format validation. It never returns configured values or secrets. If the Worker reports incomplete configuration, or the status endpoint cannot be reached, the app keeps the supply action safely disabled and explains the corresponding reason. The button is shown on the Supply tab so the user can see relay availability; it is hidden on Withdraw.
+NIM relay status is available at `GET /api/relay/status`. The endpoint returns enabled state and missing/invalid setting names without returning configured values. Keep the relay disabled until the status is enabled and the complete flow has been checked inside Nimiq Pay.
 
-These non-secret Worker variables are defined in `wrangler.jsonc` and can be changed there:
+Configure these non-secret Worker variables:
 
-| Variable | Purpose and expected format |
+| Variable | Purpose |
 | --- | --- |
-| `NIM_FEE_ADDRESS` | Nimiq mainnet address that receives the displayed fee. |
-| `NIM_RELAY_FEE_LUNA` | Positive integer fee in Luna; 100,000 Luna equals 1 NIM. |
-| `RELAY_SUPPORT_URL` | HTTPS support page for payments that need manual review. |
+| `NIM_FEE_ADDRESS` | Nimiq mainnet recipient for the displayed fee. |
+| `NIM_RELAY_FEE_LUNA` | Positive fee amount in Luna (100,000 Luna = 1 NIM). |
+| `RELAY_SUPPORT_URL` | HTTPS support destination for manual review. |
 
-Configure these as **Worker secrets**, never as plaintext README values:
+Configure these as Worker secrets through the Cloudflare dashboard or Wrangler's interactive prompt. Never put secret values in source files or command arguments.
 
-| Secret | Purpose |
+| Secret name | Purpose |
 | --- | --- |
-| `POLYGON_RPC_URL` | HTTPS Polygon RPC endpoint. It may contain provider credentials. |
+| `POLYGON_RPC_URL` | HTTPS Polygon RPC endpoint; may contain provider credentials. |
 | `NIMIQ_RPC_URL` | HTTPS Nimiq RPC endpoint. |
-| `RELAYER_PRIVATE_KEY` | Private key for the dedicated Polygon relayer account. |
-
-The Worker also needs the existing `RELAY_JOBS` and `PAYMENT_CLAIMS` Durable Object bindings and migrations defined in `wrangler.jsonc`. `RELAY_JOBS` stores short-lived relay quotes and per-wallet savings goals; goal records are separated by wallet address and asset. The relayer account must have enough POL to submit Polygon transactions. Before enabling the relay for users, confirm the support process and fee/refund policy, test in a controlled environment, verify that `/api/relay/status` reports enabled, and validate the full flow inside Nimiq Pay. A Wrangler dry run does not validate runtime secrets or live wallet or goal-signature behavior.
-
-`wrangler.jsonc` is the source of truth for these three public relay variables. It sets `keep_vars` to `true` so any additional non-secret variables configured in the Cloudflare dashboard are preserved during Wrangler deployments. `NIMIQ_RPC_URL` may be a secret if it contains provider credentials; otherwise it can be configured as a variable, but define it only once. Secrets are managed separately and are not removed by code deployments.
-
-Add secrets through Cloudflare's dashboard or Wrangler's interactive secret command, substituting only the secret name when prompted:
+| `RELAYER_PRIVATE_KEY` | Dedicated Polygon relayer key. |
 
 ```sh
 npx wrangler secret put POLYGON_RPC_URL
@@ -178,34 +151,34 @@ npx wrangler secret put NIMIQ_RPC_URL
 npx wrangler secret put RELAYER_PRIVATE_KEY
 ```
 
-Set the three non-secret variables in the Cloudflare Worker settings. Then deploy intentionally with `npx wrangler deploy`. Confirm that the deployment serves the app, that `/api/relay/status` returns the expected enabled state, and that relay quotes and support links work before announcing relay availability. Do not paste secret values into terminal commands, CI logs, chat, or commits.
+The Worker also requires the `RELAY_JOBS` and `PAYMENT_CLAIMS` Durable Object bindings and migrations in `wrangler.jsonc`. Fund and monitor the relayer's POL balance. A dry run verifies bundling/configuration shape only; it does not validate secrets, RPC access, Nimiq payment verification, or on-chain behavior.
 
-The relayer wallet pays Polygon gas and submits supply transactions for the permit owner. Monitor its POL balance. Durable Objects prevent reuse of the same NIM payment hash across quotes and track supply status. A failed or reverted supply after verified NIM payment enters manual review; no automatic NIM refund is provided. Publish a support contact and refund policy before enabling the relay for public use.
+## Supporting position tools
 
-Set `RELAY_SUPPORT_URL` to an HTTPS support page before enabling the relay; it is shown when a payment needs manual review. Market data and wallet access are explicitly shown as unavailable when their providers cannot be reached. The live host wallet prompt and transaction behavior still require validation inside Nimiq Pay after deployment; a browser preview is not proof of an in-app wallet transaction.
+Savings goals are stored by the Worker by wallet and asset so the same wallet can retrieve them on another device. Every read or change requires a fresh, one-time `personal_sign` authorization with an action and nonce. This signature is not a transaction and grants no token allowance. Goal records contain a wallet address, asset, target, and date; they are not encrypted from the service operator. Progress uses the live on-chain aToken balance. Any projection uses the current variable Aave rate and is illustrative only.
 
-## Troubleshooting
+Indicative NGN values use a USD/NGN exchange-rate feed. The browser caches the rate and checks for a refresh when the app opens if the cached rate is at least 24 hours old. It is not a live quote and does not refresh continuously during an open session. Stablecoins may deviate from their peg; the conversion is contextual information, not a promise of naira value.
 
-| Symptom | Check |
-| --- | --- |
-| Market or reserve data is unavailable | Check Aave GraphQL availability, the browser network connection, and the displayed market refresh time. Current disables actions when required market data is stale or unavailable. |
-| Wallet is not available | Open the app through Nimiq Pay or another compatible injected EVM wallet, grant the requested wallet connection, and switch to Polygon PoS (chain ID 137). |
-| Standard supply is disabled | Check the connection, Polygon network, live reserve availability, entered amount, USDT balance, and wallet POL balance. |
-| NIM relay says it is not configured | Check the Worker runtime variables and secrets, Durable Object bindings/migrations, then inspect `GET /api/relay/status`. Do not bypass this gate in the browser. |
-| Savings goal does not sync to another device | Connect the same wallet address, use Polygon, approve the read-only `personal_sign` message, and ensure the deployed Worker has the `RELAY_JOBS` Durable Object binding. Goal signatures are one-use and must be renewed for each read or change. |
-| NIM relay says payment access is unavailable | Use a Nimiq Pay host session that provides `window.nimiq.sendBasicTransactionWithData`; a normal browser preview may not expose it. |
-| Relay payment is pending or needs review | Do not repeat the payment. Check the quote status and use the configured support URL for manual review. |
-| A transaction prompt was accepted but the app has no success state | Wait for the chain receipt and position refresh, then inspect the transaction on PolygonScan. A wallet prompt alone does not establish on-chain completion. |
+## Security and risk
+
+- Current is non-custodial software. It does not request users' seed phrases or private keys.
+- Verify the network, asset, amount, destination, approval scope, and fee in each wallet prompt.
+- Public wallet addresses and transactions are visible on-chain. Do not add sensitive notes to a goal.
+- Keep RPC credentials and the relayer key in Worker secrets, never in frontend code, commits, screenshots, or chat. Use a dedicated relayer account and monitor it.
+- Aave rates change with market conditions; withdrawal timing depends on available liquidity. No yield, peg, liquidity, or transaction outcome is guaranteed.
+- A NIM payment that is verified before a failed relay may need manual support review; no automatic refund is promised.
+
+Current is software for interacting with Aave and Polygon, not a bank, custodian, broker, naira on-ramp, or guarantee against inflation or currency depreciation. Use only funds you can afford to expose to these risks.
 
 ## Repository map
 
 ```text
-public/                 Landing page, app, styles, wallet flow, and domain validation
-worker/index.js         Cloudflare relay API and NIM payment verification
-server.mjs              Local development server
-wrangler.jsonc          Cloudflare Worker static-asset configuration
-tests/                  Domain and transaction validation tests
-e2e/                    Browser behavior and responsive-interface checks
+public/          Landing page, app, styles, wallet flow, and domain validation
+worker/index.js  Cloudflare Worker APIs, relay, goals, and payment verification
+server.mjs       Local development server
+wrangler.jsonc   Worker, asset, and Durable Object configuration
+tests/           Domain and transaction validation tests
+e2e/             Browser behavior and responsive-interface checks
 ```
 
 ## License
