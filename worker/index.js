@@ -119,7 +119,7 @@ export default {
       const { owner } = await request.json();
       if (!isAddress(owner)) return json({ error: 'A valid wallet address is required.' }, 400);
       const stub = env.RELAY_JOBS.get(env.RELAY_JOBS.idFromName(`goals:${owner.toLowerCase()}`));
-      return stub.fetch('https://goals/nonce', { method: 'POST' });
+      return stub.fetch('https://goals/goals/nonce', { method: 'POST' });
     }
     if (url.pathname === '/api/goals/access' && request.method === 'POST') {
       const body = await request.json();
@@ -137,7 +137,7 @@ export default {
       if (!await signatureMatchesOwner(message, signature, owner)) return json({ error: 'Wallet signature could not be verified for this address.' }, 401);
       const stub = env.RELAY_JOBS.get(env.RELAY_JOBS.idFromName(`goals:${owner.toLowerCase()}`));
       const goal = { asset, targetRaw: String(targetRaw || ''), date: String(date || '') };
-      return stub.fetch('https://goals/access', { method: 'POST', body: JSON.stringify({ nonce, action, goal }) });
+      return stub.fetch('https://goals/goals/access', { method: 'POST', body: JSON.stringify({ nonce, action, goal }) });
     }
     if (!config(env)) return json({ error: 'NIM gas relay is not configured yet.' }, 503);
 

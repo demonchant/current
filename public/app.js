@@ -365,6 +365,18 @@ function goalSigningMessage({ owner, nonce, action, asset, targetRaw = '', date 
   return `Current savings goal ${action}\nWallet: ${owner.toLowerCase()}\nNonce: ${nonce}\nAsset: ${asset}\nTarget raw: ${targetRaw}\nTarget date: ${date}`;
 }
 
+async function readGoalResponse(response, operation) {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    throw new Error(`The savings goal service is unavailable while trying to ${operation} (HTTP ${response.status}).`);
+  }
+  try {
+    return await response.json();
+  } catch {
+    throw new Error(`The savings goal service returned an invalid response while trying to ${operation}. Please try again.`);
+  }
+}
+
 async function requestGoalAccess(action, goal = {}) {
   if (!state.wallet) throw new Error('Connect your wallet to access its saved goal.');
   const owner = state.wallet;
@@ -374,7 +386,7 @@ async function requestGoalAccess(action, goal = {}) {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ owner }), cache: 'no-store',
   });
-  const nonceBody = await nonceResponse.json();
+  const nonceBody = await readGoalResponse(nonceResponse, 'start wallet authorization');
   if (!nonceResponse.ok) throw new Error(nonceBody.error || 'Could not start wallet authorization.');
   const targetRaw = action === 'save' ? String(goal.targetRaw) : '';
   const date = action === 'save' ? String(goal.date) : '';
@@ -387,7 +399,7 @@ async function requestGoalAccess(action, goal = {}) {
     method: 'POST', headers: { 'content-type': 'application/json' }, cache: 'no-store',
     body: JSON.stringify({ owner, nonce: nonceBody.nonce, action, asset: asset.id, targetRaw, date, signature }),
   });
-  const data = await response.json();
+  const data = await readGoalResponse(response, 'access your saved goal');
   if (!response.ok) throw new Error(data.error || 'Could not access the saved goal.');
   return data.goal;
 }

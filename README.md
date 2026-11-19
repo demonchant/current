@@ -121,7 +121,7 @@ npm ci
 npm run dev
 ```
 
-Open `http://localhost:4173` for the landing page and `http://localhost:4173/app` for the app. No `.env` file is required for the local frontend. The deployed Cloudflare Worker is needed for cross-device goals and NIM relay APIs. Live wallet actions require a compatible injected EVM provider connected to Polygon, supported token balance, and POL for standard transaction gas.
+Open `http://localhost:4173` for the landing page and `http://localhost:4173/app` for the app. The local server forwards `/api/goals/*` to the deployed Worker at `current.oladapodamiey.workers.dev`, so wallet-authorized goals save to the same cross-device store. Set `GOALS_API_ORIGIN` to use another Worker. The NIM relay APIs require the deployed Worker. Live wallet actions require a compatible injected EVM provider connected to Polygon, supported token balance, and POL for standard transaction gas.
 
 ## Verify
 
